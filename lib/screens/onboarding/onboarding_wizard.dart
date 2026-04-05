@@ -532,7 +532,7 @@ class _ConfirmPage extends StatelessWidget {
                         if (qty != null) ...[
                           const SizedBox(height: 12),
                           _SummaryRow(
-                            icon: Icons.opacity_outlined,
+                            icon: Icons.water_drop,
                             label: 'یومیہ مقدار',
                             value: '${qty!.toStringAsFixed(1)} لیٹر',
                           ),

@@ -162,7 +162,7 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
         onPressed: () => context.push('/customers/new'),
         backgroundColor: kGreen,
         foregroundColor: kWhite,
-        icon: const Icon(Icons.person_add_outlined),
+        icon: const Icon(Icons.person_add),
         label: const Text('New Customer'),
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -264,7 +264,7 @@ class _CustomerRow extends StatelessWidget {
               _RowIconButton(
                 icon: Icons.payments_outlined,
                 color: kGreen,
-                tooltip: 'ادائیگی',
+                tooltip: 'Payment',
                 onTap: onPayment,
               ),
 
@@ -272,7 +272,7 @@ class _CustomerRow extends StatelessWidget {
               _RowIconButton(
                 icon: Icons.history,
                 color: kMittiBrown,
-                tooltip: 'تاریخ',
+                tooltip: 'History',
                 onTap: onHistory,
               ),
             ],
@@ -342,7 +342,7 @@ class _BalanceBadge extends StatelessWidget {
       label = '+₨${rounded % 1 == 0 ? rounded.toInt() : rounded.toStringAsFixed(0)}';
     } else {
       bg = kGreen;
-      label = 'صاف';
+      label = 'Clear';
     }
 
     return Container(
@@ -463,14 +463,14 @@ class _ErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline, color: kAlertRed, size: 48),
             const SizedBox(height: 12),
-            Text('خرابی', style: kHeadlineStyle.copyWith(color: kAlertRed)),
+            Text('Error', style: kHeadlineStyle.copyWith(color: kAlertRed)),
             const SizedBox(height: 8),
             Text(message, style: kBodyStyle, textAlign: TextAlign.center),
             const SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('دوبارہ کوشش'),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -494,21 +494,21 @@ class _EmptyView extends StatelessWidget {
             const Icon(Icons.people_outline, color: kMutedGray, size: 64),
             const SizedBox(height: 16),
             Text(
-              'ابھی کوئی گاہک نہیں',
+              'No customers yet',
               style: kHeadlineStyle.copyWith(color: kMutedGray),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'پہلا گاہک شامل کریں',
+              'Add your first customer',
               style: kBodyLgUrduStyle.copyWith(color: kMutedGray),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: onAdd,
-              icon: const Icon(Icons.person_add_outlined),
-              label: const Text('نیا گاہک'),
+              icon: const Icon(Icons.person_add),
+              label: const Text('New Customer'),
             ),
           ],
         ),

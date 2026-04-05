@@ -363,7 +363,7 @@ class _CurrentPriceCard extends StatelessWidget {
               child: const Row(
                 textDirection: TextDirection.rtl,
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: kAmber, size: 18),
+                  Icon(Icons.warning_amber, color: kAmber, size: 18),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(

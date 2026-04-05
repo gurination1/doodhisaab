@@ -79,8 +79,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  _pinHash != null ? 'PIN تبدیل ہو گئی' : 'PIN لگ گئی',
-                  textDirection: TextDirection.rtl,
+                  _pinHash != null ? 'PIN changed' : 'PIN set',
                 ),
                 backgroundColor: kGreen,
                 duration: const Duration(seconds: 2),
@@ -99,23 +98,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: kCream,
         title: const Text(
-          'PIN ہٹائیں؟',
-          textDirection: TextDirection.rtl,
+          'Remove PIN?',
           style: TextStyle(color: kInkBlack, fontSize: 17),
         ),
         content: const Text(
-          'PIN ہٹانے کے بعد ایپ بغیر PIN کے کھلے گی۔',
-          textDirection: TextDirection.rtl,
+          'The app will open without a PIN after removal.',
           style: TextStyle(color: kMutedGray, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('منسوخ', style: TextStyle(color: kMutedGray)),
+            child: const Text('Cancel', style: TextStyle(color: kMutedGray)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('ہٹائیں',
+            child: const Text('Remove',
                 style: TextStyle(color: kAlertRed, fontWeight: FontWeight.w600)),
           ),
         ],
@@ -129,8 +126,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'PIN ہٹا دی گئی',
-              textDirection: TextDirection.rtl,
+              'PIN removed',
             ),
             duration: Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
@@ -152,15 +148,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
         title: const Text(
-          'اپنا ڈیٹا محفوظ رکھیں',
-          textDirection: TextDirection.rtl,
+          'Keep your data safe',
         ),
         content: const Text(
-          'آپ کا تمام ڈیٹا اس فون میں محفوظ ہے۔\n\n'
-          'اگر فون گم ہو یا خراب ہو تو ڈیٹا ضائع ہو سکتا ہے۔\n\n'
-          'ہفتہ وار بیک اپ خودبخود ڈاؤن لوڈز فولڈر میں محفوظ ہوتا ہے۔\n'
-          'آپ سیٹنگز میں جا کر ابھی بیک اپ لے سکتے ہیں۔',
-          textDirection: TextDirection.rtl,
+          'All your data is stored on this phone.\n\n'
+          'If the phone is lost or damaged, your data can be lost.\n\n'
+          'A weekly backup is saved automatically in the Downloads folder.\n'
+          'You can also create a backup right now from Settings.',
         ),
         actionsAlignment: MainAxisAlignment.start,
         actions: [
@@ -168,7 +162,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             style: TextButton.styleFrom(foregroundColor: kGreen),
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text(
-              'سمجھ گیا',
+              'Got it',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
@@ -228,7 +222,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // ── Pricing ──────────────────────────────────────────────────────
           _SectionHeader(label: 'Pricing'),
           _SettingsTile(
-            icon: Icons.monetization_on_outlined,
+            icon: Icons.monetization_on,
             label: 'Milk Price',
             subtitle: 'View current price and history',
             onTap: () => context.push('/settings/price'),
@@ -250,7 +244,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             if (_pinHash != null)
               _SettingsTile(
-                icon: Icons.lock_open_outlined,
+                icon: Icons.lock_open,
                 label: 'Remove PIN',
                 subtitle: 'App will open without a PIN',
                 danger: true,
@@ -261,13 +255,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // ── Data ─────────────────────────────────────────────────────────
           _SectionHeader(label: 'Data'),
           _SettingsTile(
-            icon: Icons.backup_outlined,
+            icon: Icons.backup,
             label: 'Backup',
             subtitle: 'Save into Downloads/DoodHisaab/',
             onTap: () => context.push('/settings/backup'),
           ),
           _SettingsTile(
-            icon: Icons.file_download_outlined,
+            icon: Icons.file_download,
             label: 'Export CSV',
             subtitle: 'Create a spreadsheet-friendly file',
             onTap: () => context.push('/settings/export'),

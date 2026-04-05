@@ -187,7 +187,7 @@ class _CustomerProfileScreenState
         title: Text(c.name),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit_outlined),
+            icon: const Icon(Icons.edit_note),
             tooltip: 'ترمیم',
             onPressed: () async {
               await context.push('/customers/new', extra: c);
@@ -205,7 +205,7 @@ class _CustomerProfileScreenState
                   ),
                 )
               : IconButton(
-                  icon: const Icon(Icons.archive_outlined),
+                  icon: const Icon(Icons.archive),
                   tooltip: 'آرکائیو',
                   onPressed: _confirmArchive,
                 ),
@@ -411,7 +411,7 @@ class _DetailsCard extends StatelessWidget {
             if (c.priceOverride != null) ...[
               const Divider(height: 20),
               _DetailRow(
-                icon: Icons.price_change_outlined,
+                icon: Icons.price_change,
                 label: 'خصوصی قیمت',
                 value: '₨ ${c.priceOverride!.toStringAsFixed(2)} فی لیٹر',
                 valueColor: kAmber,

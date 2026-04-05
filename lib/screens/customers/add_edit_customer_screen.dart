@@ -317,7 +317,7 @@ class _AddEditCustomerScreenState
                           style: kBodyLgStyle,
                           decoration: const InputDecoration(
                             hintText: 'دن درج کریں',
-                            prefixIcon: Icon(Icons.calendar_today_outlined),
+                            prefixIcon: Icon(Icons.calendar_today),
                             suffixText: 'دن',
                           ),
                         ),
@@ -366,7 +366,7 @@ class _AddEditCustomerScreenState
                           style: kBodyStyle,
                           decoration: const InputDecoration(
                             hintText: 'وجہ (اختیاری)',
-                            prefixIcon: Icon(Icons.note_outlined),
+                            prefixIcon: Icon(Icons.notes),
                           ),
                         ),
                       ],

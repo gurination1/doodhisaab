@@ -287,7 +287,7 @@ class _ExportScreenState extends State<ExportScreen> {
                         ),
                       )
                     else
-                      const Icon(Icons.file_download_outlined,
+                      const Icon(Icons.file_download,
                           size: 24, color: kWhite),
                     const SizedBox(width: 10),
                     Text(

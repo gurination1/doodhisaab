@@ -296,7 +296,7 @@ class _ProfitLossTabState extends State<_ProfitLossTab> {
               if (snap.hasError) {
                 return Center(
                   child: Text(
-                    'خرابی: ${snap.error}',
+                    'Error: ${snap.error}',
                     textDirection: TextDirection.rtl,
                     style: const TextStyle(color: kAlertRed, fontSize: 14),
                   ),
@@ -336,7 +336,7 @@ class _PLContent extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               const Text(
-                'کل منافع',
+                'Net Profit',
                 textDirection: TextDirection.rtl,
                 style: TextStyle(color: kMutedGray, fontSize: 14),
               ),
@@ -354,7 +354,7 @@ class _PLContent extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    'اس مہینے کا کوئی ریکارڈ نہیں',
+                    'No records for this month',
                     textDirection: TextDirection.rtl,
                     style: const TextStyle(color: kMutedGray, fontSize: 13),
                   ),
@@ -366,37 +366,37 @@ class _PLContent extends StatelessWidget {
 
         // Income
         _PLSectionHeader(
-            label: 'آمدنی', icon: Icons.trending_up, color: kGreen),
+            label: 'Income', icon: Icons.trending_up, color: kGreen),
         _PLRow(
-            label: 'دودھ سے آمدنی',
+            label: 'Milk Revenue',
             value: '₹${summary.totalMilkRevenue.toStringAsFixed(0)}',
             valueColor: kGreen),
         _PLRow(
-            label: 'کل لیٹر',
+            label: 'Total Liters',
             value: '${summary.totalLiters.toStringAsFixed(1)} L'),
         _PLRow(
-            label: 'دیگر آمدنی',
+            label: 'Other Income',
             value: '₹${summary.otherIncome.toStringAsFixed(0)}',
             valueColor: kGreen),
         const Divider(height: 28),
 
         // Expenses
         _PLSectionHeader(
-            label: 'اخراجات', icon: Icons.trending_down, color: kAlertRed),
+            label: 'Expenses', icon: Icons.trending_down, color: kAlertRed),
         _PLRow(
-            label: 'کل اخراجات',
+            label: 'Total Expenses',
             value: '₹${summary.totalExpenses.toStringAsFixed(0)}',
             valueColor: kAlertRed),
         const Divider(height: 28),
 
         // Collections
         _PLSectionHeader(
-            label: 'وصولی', icon: Icons.payments_outlined, color: kMittiBrown),
+            label: 'Collections', icon: Icons.payments_outlined, color: kMittiBrown),
         _PLRow(
-            label: 'گاہکوں سے وصول',
+            label: 'Received from Customers',
             value: '₹${summary.totalCollected.toStringAsFixed(0)}'),
         _PLRow(
-            label: 'فعال گاہک',
+            label: 'Active Customers',
             value: '${summary.activeCustomerCount}'),
         const SizedBox(height: 8),
       ],

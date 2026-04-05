@@ -194,7 +194,7 @@ class _BackupScreenState extends State<BackupScreen> {
                         ),
                       )
                     else
-                      const Icon(Icons.backup_outlined, size: 24, color: kWhite),
+                      const Icon(Icons.backup, size: 24, color: kWhite),
                     const SizedBox(width: 10),
                     Text(
                       _backing ? 'محفوظ ہو رہا ہے...' : 'بیک اپ لیں',
@@ -294,7 +294,7 @@ class _BackupScreenState extends State<BackupScreen> {
                               textDirection: TextDirection.rtl,
                               children: [
                                 Icon(
-                                  Icons.storage_rounded,
+                                  Icons.storage,
                                   color: isLatest ? kGreen : kMutedGray,
                                   size: 22,
                                 ),

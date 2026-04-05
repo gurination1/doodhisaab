@@ -572,7 +572,7 @@ class _OverpaymentWarning extends StatelessWidget {
       child: Row(
         textDirection: TextDirection.rtl,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: kAmber, size: 20),
+          const Icon(Icons.warning_amber, color: kAmber, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

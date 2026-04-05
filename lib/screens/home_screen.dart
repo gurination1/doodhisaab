@@ -143,7 +143,7 @@ class HomeScreen extends ConsumerWidget {
                     fontFamily: 'NotoNastaliqUrdu',
                   ),
                 ),
-                icon: const Icon(Icons.local_shipping_outlined, size: 28),
+                icon: const Icon(Icons.local_shipping, size: 28),
                 label: const Text('Start Delivery'),
               ),
             ),
@@ -185,13 +185,13 @@ class HomeScreen extends ConsumerWidget {
                   const SizedBox(width: 10),
                   _QuickTile(
                     label: 'Reports',
-                    icon: Icons.bar_chart_outlined,
+                    icon: Icons.bar_chart,
                     onTap: () => context.go('/reports'),
                   ),
                   const SizedBox(width: 10),
                   _QuickTile(
                     label: 'Expenses',
-                    icon: Icons.receipt_long_outlined,
+                    icon: Icons.receipt_long,
                     onTap: () => context.push('/expenses/new'),
                   ),
                   const SizedBox(width: 10),
@@ -241,7 +241,7 @@ class HomeScreen extends ConsumerWidget {
             label: 'Customers',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_outlined),
+            icon: Icon(Icons.bar_chart),
             activeIcon: Icon(Icons.bar_chart),
             label: 'Reports',
           ),
@@ -422,7 +422,7 @@ class _SuccessBanner extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'آج $count گاہکوں کو $litersText لیٹر دودھ دیا گیا',
+              '$count customers received $litersText liters today',
               style: kBodyLgUrduStyle.copyWith(color: kGreen),
             ),
           ),
@@ -450,7 +450,7 @@ class _EmptyBanner extends StatelessWidget {
           const Icon(Icons.info_outline, color: kAmber, size: 26),
           const SizedBox(width: 12),
           Text(
-            'آج ابھی کوئی ڈیری درج نہیں ہوئی',
+            'No deliveries recorded for today yet',
             style: kBodyLgUrduStyle.copyWith(color: kAmber),
           ),
         ],

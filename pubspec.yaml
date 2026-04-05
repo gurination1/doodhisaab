@@ -1,0 +1,63 @@
+name: doodhisaab
+description: Dairy farm delivery and payment ledger — offline-first, Urdu-first.
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.4.0
+  riverpod_annotation: ^2.3.0
+
+  # Navigation
+  go_router: ^13.0.0
+
+  # Database
+  sqflite: ^2.3.0
+  path: ^1.8.0
+
+  # Unique IDs
+  uuid: ^4.2.0
+
+  # Background tasks
+  workmanager: ^0.9.0+3
+
+  # File system
+  path_provider: ^2.1.0
+
+  # Sharing
+  url_launcher: ^6.2.0
+  share_plus: ^7.2.0
+
+  # Security — PIN hashing (SHA-256)
+  # REQUIRED: lock_screen.dart hashes the PIN with this package.
+  # Do NOT remove — removing it breaks the PIN screen at compile time.
+  crypto: ^3.0.3
+
+  # Localization
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Code generation for Riverpod providers
+  build_runner: ^2.4.0
+  riverpod_generator: ^2.3.0
+
+  # In-memory SQLite for unit tests (no Android emulator needed)
+  sqflite_common_ffi: ^2.3.0
+
+flutter:
+  # Enables flutter gen-l10n to generate AppLocalizations from ARB files
+  generate: true
+  uses-material-design: true

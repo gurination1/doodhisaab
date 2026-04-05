@@ -1,0 +1,76 @@
+{
+  "@@locale": "en",
+  "appName": "DoodHisaab",
+  "navHome": "Home",
+  "navCustomers": "Customers",
+  "navReports": "Reports",
+  "navSettings": "Settings",
+  "btnConfirm": "Confirm",
+  "btnSaveAll": "Save All",
+  "btnCancel": "Cancel",
+  "btnNext": "Next",
+  "btnBack": "Back",
+  "btnSkip": "Skip",
+  "btnDone": "OK",
+  "btnAddCustomer": "New Customer",
+  "btnAddPayment": "Record Payment",
+  "btnBackupNow": "Backup Now",
+  "labelPricePerLiter": "Price per Liter",
+  "labelDefaultQty": "Default Daily Quantity",
+  "labelCustomerName": "Customer Name",
+  "labelPhone": "Phone Number",
+  "hintNameExample": "e.g. Ahmad Khan",
+  "hintPhoneLater": "You can add phone and payment schedule later",
+  "successSaved": "Saved!",
+  "successSavedSubtitle": "Today's records are complete",
+  "recoveryTitle": "Incomplete Session",
+  "recoveryBody": "Continue where you left off or start fresh?",
+  "recoveryContinue": "Continue",
+  "recoveryRestart": "Start Over",
+  "warningUnusualTitle": "Is this correct?",
+  "warningUnusualBody": "{name}: {qty}L today? (usually {defaultQty}L)",
+  "@warningUnusualBody": {
+    "placeholders": {
+      "name": {"type": "String"},
+      "qty": {"type": "String"},
+      "defaultQty": {"type": "String"}
+    }
+  },
+  "warningConfirmSafe": "← No, enter {defaultQty}L",
+  "@warningConfirmSafe": {
+    "placeholders": { "defaultQty": {"type": "String"} }
+  },
+  "warningConfirmDangerous": "Yes, {qty}L is correct",
+  "@warningConfirmDangerous": {
+    "placeholders": { "qty": {"type": "String"} }
+  },
+  "balanceOwed": "Balance: ₹{amount}",
+  "@balanceOwed": {
+    "placeholders": { "amount": {"type": "String"} }
+  },
+  "paymentReceivedNudge": "Did you collect any payment today?",
+  "paymentRecordYes": "Yes, record it",
+  "paymentRecordNo": "No, later",
+  "onboardingStep1Title": "Set Milk Price",
+  "onboardingStep2Title": "Add First Customer",
+  "onboardingStep3Title": "Get Started",
+  "onboardingStartBtn": "Let's Start",
+  "dataWarningTitle": "Keep Your Data Safe",
+  "dataWarningBody": "All your data is stored on this phone.\n\nIf the phone is lost or damaged, data may be lost.\n\nWeekly backup is saved automatically to the Downloads folder.\nYou can also back up now from Settings.",
+  "dataWarningOk": "Got it",
+  "backupSavedAt": "Backup saved: {path}",
+  "@backupSavedAt": {
+    "placeholders": { "path": {"type": "String"} }
+  },
+  "reportTabStatements": "Statements",
+  "reportTabPL": "Profit & Loss",
+  "expensesNudge": "Add expenses to see accurate profit",
+  "outdoorModeLabel": "Use in bright sunlight",
+  "priceStaleBanner": "Your last price is 30 days old. Has the price changed?",
+  "skipToday": "Skip Today",
+  "previousCustomer": "Previous",
+  "defaultQtyLabel": "Default: {qty}L",
+  "@defaultQtyLabel": {
+    "placeholders": { "qty": {"type": "String"} }
+  }
+}

@@ -13,12 +13,15 @@ import '../screens/onboarding/onboarding_wizard.dart';
 import '../screens/other_income/other_income_entry_screen.dart';
 import '../screens/payments/payment_entry_screen.dart';
 import '../screens/placeholder_screen.dart';
+import '../screens/privacy/privacy_policy_screen.dart';
 import '../screens/reports/customer_statement_screen.dart';
 import '../screens/reports/reports_screen.dart';
+import '../screens/settings/calculator_screen.dart';
 import '../screens/settings/backup_screen.dart';
 import '../screens/settings/export_screen.dart';
 import '../screens/settings/price_settings_screen.dart';
 import '../screens/settings/settings_screen.dart';
+import '../screens/tutorial/tutorial_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // app_router.dart
@@ -37,7 +40,6 @@ import '../screens/settings/settings_screen.dart';
 final router = GoRouter(
   initialLocation: '/lock',
   routes: [
-
     // ── Entry / shell ────────────────────────────────────────────────────────
     GoRoute(
       path: '/lock',
@@ -134,13 +136,25 @@ final router = GoRouter(
       path: '/settings/export',
       builder: (_, __) => const ExportScreen(),
     ),
+    GoRoute(
+      path: '/settings/calculator',
+      builder: (_, __) => const CalculatorScreen(),
+    ),
+    GoRoute(
+      path: '/tutorial',
+      builder: (_, __) => const TutorialScreen(),
+    ),
+    GoRoute(
+      path: '/privacy',
+      builder: (_, __) => const PrivacyPolicyScreen(),
+    ),
 
     // ── Placeholder — wired routes not yet built ──────────────────────────────
     // Remove each entry as the real screen is built.
     // Currently: none remaining — all routes above have real implementations.
     GoRoute(
       path: '/placeholder',
-      builder: (_, __) => const PlaceholderScreen(title: 'آنے والا'),
+      builder: (_, __) => const PlaceholderScreen(title: 'Coming Soon'),
     ),
   ],
 );

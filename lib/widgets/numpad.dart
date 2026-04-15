@@ -16,7 +16,7 @@ import '../theme/app_theme.dart';
 /// Decimal snapping:
 ///  - Only .0 and .5 are valid decimal parts (dairy milk = whole or half liters).
 ///  - Tapping a non-{0,5} digit after the decimal point snaps to the nearest valid
-///    value and shows a brief SnackBar: "نزدیک ترین: X.Y"
+///    value and shows a brief SnackBar: "Nearest: X.Y"
 ///  - Digits 1,2 → snap to .0  |  digits 3–7 → snap to .5  |  digits 8,9 → snap to .5
 ///
 /// Usage:
@@ -93,8 +93,7 @@ class NumpadWidget extends StatelessWidget {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              'نزدیک ترین: $snapped',
-              textDirection: TextDirection.rtl,
+              'Nearest: $snapped',
             ),
             duration: const Duration(milliseconds: 1200),
             behavior: SnackBarBehavior.floating,

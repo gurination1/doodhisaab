@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/customer_repository.dart';
 import '../../db/price_repository.dart';
 import '../../db/settings_repository.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_exit_guard.dart';
 import '../../widgets/numpad.dart';
 import '../../widgets/quantity_chips.dart';
 
@@ -51,6 +56,18 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
   bool _customerSaved = false;
 
   @override
+  void initState() {
+    super.initState();
+    unawaited(
+      AnalyticsService.instance.trackFeatureUsed(
+        featureName: 'onboarding_started',
+        screenName: 'Onboarding',
+        routeName: '/onboarding',
+      ),
+    );
+  }
+
+  @override
   void dispose() {
     _pageController.dispose();
     _nameController.dispose();
@@ -70,7 +87,7 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
     if (!_priceSaved) {
       final price = double.tryParse(_priceValue);
       if (price != null && price > 0) {
-        await PriceRepository().setPrice(price, note: 'onboarding');
+        await PriceRepository().setPrice(price);
       }
       _priceSaved = true;
     }
@@ -95,27 +112,24 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
     if (_isSaving) return;
     setState(() => _isSaving = true);
     await SettingsRepository.instance.markFirstLaunchDone();
+    await AnalyticsService.instance.trackFeatureUsed(
+      featureName: 'onboarding_completed',
+      screenName: 'Onboarding',
+      routeName: '/onboarding',
+    );
     setState(() => _isSaving = false);
     if (!mounted) return;
     _showDataWarning();
   }
 
   void _showDataWarning() {
+    final l10n = AppLocalizations.of(context)!;
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text(
-          'اپنا ڈیٹا محفوظ رکھیں',
-          textDirection: TextDirection.rtl,
-        ),
-        content: const Text(
-          'آپ کا تمام ڈیٹا اس فون میں محفوظ ہے۔\n\n'
-          'اگر فون گم ہو یا خراب ہو تو ڈیٹا ضائع ہو سکتا ہے۔\n\n'
-          'ہفتہ وار بیک اپ خودبخود ڈاؤن لوڈز فولڈر میں محفوظ ہوتا ہے۔\n'
-          'آپ سیٹنگز میں جا کر ابھی بیک اپ لے سکتے ہیں۔',
-          textDirection: TextDirection.rtl,
-        ),
+        title: Text(l10n.dataWarningTitle),
+        content: Text(l10n.dataWarningBody),
         actionsAlignment: MainAxisAlignment.start,
         actions: [
           TextButton(
@@ -124,8 +138,8 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
               Navigator.of(ctx).pop();
               if (mounted) context.go('/home');
             },
-            child: const Text(
-              'سمجھ گیا',
+            child: Text(
+              l10n.dataWarningOk,
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
           ),
@@ -136,51 +150,63 @@ class _OnboardingWizardState extends State<OnboardingWizard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kCream,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _ProgressBar(currentPage: _currentPage),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                // Swipe disabled — buttons only. Low-literacy users accidentally
-                // swipe and lose their place. All navigation is explicit.
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _PricePage(
-                    value: _priceValue,
-                    onChanged: (v) => setState(() => _priceValue = v),
-                    onNext: _onPriceNext,
-                    onSkip: () {
-                      _priceSaved = true;
-                      _animateTo(1);
-                    },
-                  ),
-                  _CustomerPage(
-                    nameController: _nameController,
-                    selectedQty: _selectedQty,
-                    onQtySelected: (q) => setState(() => _selectedQty = q),
-                    onBack: () => _animateTo(0),
-                    onNext: _onCustomerNext,
-                    onSkip: () {
-                      _customerSaved = true;
-                      _animateTo(2);
-                    },
-                  ),
-                  _ConfirmPage(
-                    price: _priceValue,
-                    customerName: _nameController.text.trim(),
-                    qty: _selectedQty,
-                    isSaving: _isSaving,
-                    onBack: () => _animateTo(1),
-                    onStart: _finish,
-                  ),
-                ],
+    return AppExitGuard(
+      child: Scaffold(
+        backgroundColor: kCream,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _ProgressBar(currentPage: _currentPage),
+              Expanded(
+                child: PageView(
+                  controller: _pageController,
+                  // Swipe disabled — buttons only. Low-literacy users accidentally
+                  // swipe and lose their place. All navigation is explicit.
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _PricePage(
+                      value: _priceValue,
+                      onChanged: (v) => setState(() => _priceValue = v),
+                      onNext: _onPriceNext,
+                      onSkip: () {
+                        AnalyticsService.instance.trackFeatureUsed(
+                          featureName: 'onboarding_skipped',
+                          screenName: 'Onboarding',
+                          routeName: '/onboarding',
+                        );
+                        _priceSaved = true;
+                        _animateTo(1);
+                      },
+                    ),
+                    _CustomerPage(
+                      nameController: _nameController,
+                      selectedQty: _selectedQty,
+                      onQtySelected: (q) => setState(() => _selectedQty = q),
+                      onBack: () => _animateTo(0),
+                      onNext: _onCustomerNext,
+                      onSkip: () {
+                        AnalyticsService.instance.trackFeatureUsed(
+                          featureName: 'onboarding_skipped',
+                          screenName: 'Onboarding',
+                          routeName: '/onboarding',
+                        );
+                        _customerSaved = true;
+                        _animateTo(2);
+                      },
+                    ),
+                    _ConfirmPage(
+                      price: _priceValue,
+                      customerName: _nameController.text.trim(),
+                      qty: _selectedQty,
+                      isSaving: _isSaving,
+                      onBack: () => _animateTo(1),
+                      onStart: _finish,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -237,6 +263,7 @@ class _PricePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -245,9 +272,8 @@ class _PricePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text(
-                'فی لیٹر دودھ کی قیمت',
-                textDirection: TextDirection.rtl,
+              Text(
+                l10n.onboardingStep1Title,
                 style: kHeadlineStyle,
               ),
               const SizedBox(height: 16),
@@ -274,8 +300,7 @@ class _PricePage extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'فی لیٹر',
-                      textDirection: TextDirection.rtl,
+                      l10n.labelPricePerLiter,
                       style: kBodyStyle.copyWith(color: kMutedGray),
                     ),
                   ],
@@ -291,9 +316,8 @@ class _PricePage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
           child: ElevatedButton(
             onPressed: onNext,
-            child: const Text(
-              'آگے',
-              textDirection: TextDirection.rtl,
+            child: Text(
+              l10n.btnNext,
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
           ),
@@ -303,9 +327,8 @@ class _PricePage extends StatelessWidget {
           child: TextButton(
             style: TextButton.styleFrom(foregroundColor: kMutedGray),
             onPressed: onSkip,
-            child: const Text(
-              'چھوڑیں',
-              textDirection: TextDirection.rtl,
+            child: Text(
+              l10n.btnSkip,
               style: TextStyle(fontSize: 16),
             ),
           ),
@@ -338,40 +361,41 @@ class _CustomerPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final isUrdu = Localizations.localeOf(context).languageCode == 'ur';
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment:
+            isUrdu ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 8),
-          const Text(
-            'پہلا گاہک شامل کریں',
-            textDirection: TextDirection.rtl,
+          Text(
+            l10n.onboardingStep2Title,
             style: kHeadlineStyle,
           ),
           const SizedBox(height: 20),
 
           // ── Field 1: Name ───────────────────────────────────────────────────
           // Text field — system keyboard IS allowed for name input (not a number).
-          const Align(
-            alignment: Alignment.centerRight,
+          Align(
+            alignment: isUrdu ? Alignment.centerRight : Alignment.centerLeft,
             child: Text(
-              'گاہک کا نام',
-              textDirection: TextDirection.rtl,
+              l10n.labelCustomerName,
               style: kLabelStyle,
             ),
           ),
           const SizedBox(height: 6),
           TextField(
             controller: nameController,
-            textDirection: TextDirection.rtl,
-            textAlign: TextAlign.right,
+            textDirection: isUrdu ? TextDirection.rtl : TextDirection.ltr,
+            textAlign: isUrdu ? TextAlign.right : TextAlign.left,
             keyboardType: TextInputType.name,
             textCapitalization: TextCapitalization.words,
-            style: kBodyLgUrduStyle,
-            decoration: const InputDecoration(
-              hintText: 'مثلاً: احمد خان',
-              hintTextDirection: TextDirection.rtl,
+            style: isUrdu ? kBodyLgUrduStyle : kBodyLgStyle,
+            decoration: InputDecoration(
+              hintText: l10n.hintNameExample,
+              hintTextDirection: isUrdu ? TextDirection.rtl : TextDirection.ltr,
             ),
           ),
           const SizedBox(height: 24),
@@ -380,11 +404,10 @@ class _CustomerPage extends StatelessWidget {
           // NO numpad here. Chips cover 100% of typical dairy quantities.
           // DO NOT add phone, payment cycle, address, or any other field.
           // 4+ fields → ~40% abandonment; 2 fields is the maximum.
-          const Align(
-            alignment: Alignment.centerRight,
+          Align(
+            alignment: isUrdu ? Alignment.centerRight : Alignment.centerLeft,
             child: Text(
-              'عام یومیہ مقدار',
-              textDirection: TextDirection.rtl,
+              l10n.labelDefaultQty,
               style: kLabelStyle,
             ),
           ),
@@ -406,9 +429,8 @@ class _CustomerPage extends StatelessWidget {
               color: kSurfaceGray,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Text(
-              'آپ بعد میں فون اور ادائیگی کا طریقہ شامل کر سکتے ہیں',
-              textDirection: TextDirection.rtl,
+            child: Text(
+              l10n.hintPhoneLater,
               style: kBodyStyle,
             ),
           ),
@@ -419,10 +441,7 @@ class _CustomerPage extends StatelessWidget {
               Expanded(
                 child: OutlinedButton(
                   onPressed: onBack,
-                  child: const Text(
-                    'پیچھے',
-                    textDirection: TextDirection.rtl,
-                  ),
+                  child: Text(l10n.btnBack),
                 ),
               ),
               const SizedBox(width: 12),
@@ -430,10 +449,7 @@ class _CustomerPage extends StatelessWidget {
                 flex: 2,
                 child: ElevatedButton(
                   onPressed: onNext,
-                  child: const Text(
-                    'آگے',
-                    textDirection: TextDirection.rtl,
-                  ),
+                  child: Text(l10n.btnNext),
                 ),
               ),
             ],
@@ -444,9 +460,8 @@ class _CustomerPage extends StatelessWidget {
             child: TextButton(
               style: TextButton.styleFrom(foregroundColor: kMutedGray),
               onPressed: onSkip,
-              child: const Text(
-                'چھوڑیں',
-                textDirection: TextDirection.rtl,
+              child: Text(
+                l10n.btnSkip,
                 style: TextStyle(fontSize: 16),
               ),
             ),
@@ -488,15 +503,15 @@ class _ConfirmPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 8),
-          const Text(
-            'شروع کرنے کے لیے تیار!',
-            textDirection: TextDirection.rtl,
+          Text(
+            l10n.onboardingReadyTitle,
             style: kHeadlineStyle,
           ),
           const SizedBox(height: 24),
@@ -515,7 +530,7 @@ class _ConfirmPage extends StatelessWidget {
                       if (_hasPrice)
                         _SummaryRow(
                           icon: Icons.currency_rupee,
-                          label: 'فی لیٹر قیمت',
+                          label: l10n.onboardingPriceSummaryLabel,
                           value: '₹ $price',
                         ),
                       if (_hasPrice && _hasCustomer) ...[
@@ -526,25 +541,24 @@ class _ConfirmPage extends StatelessWidget {
                       if (_hasCustomer) ...[
                         _SummaryRow(
                           icon: Icons.person_outline,
-                          label: 'پہلا گاہک',
+                          label: l10n.onboardingFirstCustomerSummaryLabel,
                           value: customerName,
                         ),
                         if (qty != null) ...[
                           const SizedBox(height: 12),
                           _SummaryRow(
                             icon: Icons.water_drop,
-                            label: 'یومیہ مقدار',
-                            value: '${qty!.toStringAsFixed(1)} لیٹر',
+                            label: l10n.onboardingDailyQtySummaryLabel,
+                            value: l10n.litersValue(qty!.toStringAsFixed(1)),
                           ),
                         ],
                       ],
                     ],
                   )
-                : const Padding(
+                : Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
                     child: Text(
-                      'آپ بعد میں قیمت اور گاہک شامل کر سکتے ہیں',
-                      textDirection: TextDirection.rtl,
+                      l10n.onboardingCanSetupLater,
                       textAlign: TextAlign.center,
                       style: kBodyStyle,
                     ),
@@ -567,9 +581,8 @@ class _ConfirmPage extends StatelessWidget {
                         strokeWidth: 2.5,
                       ),
                     )
-                  : const Text(
-                      'شروع کریں',
-                      textDirection: TextDirection.rtl,
+                  : Text(
+                      l10n.onboardingStartBtn,
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -580,10 +593,7 @@ class _ConfirmPage extends StatelessWidget {
           const SizedBox(height: 12),
           OutlinedButton(
             onPressed: onBack,
-            child: const Text(
-              'پیچھے',
-              textDirection: TextDirection.rtl,
-            ),
+            child: Text(l10n.btnBack),
           ),
           const SizedBox(height: 24),
         ],
@@ -609,15 +619,16 @@ class _SummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dir = Directionality.of(context);
     return Row(
-      textDirection: TextDirection.rtl,
+      textDirection: dir,
       children: [
         Icon(icon, color: kGreen, size: 24),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
             label,
-            textDirection: TextDirection.rtl,
+            textDirection: dir,
             style: kBodyStyle.copyWith(color: kMutedGray),
           ),
         ),

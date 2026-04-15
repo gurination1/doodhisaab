@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/services/analytics_service.dart';
+import '../l10n/app_localizations.dart';
+import '../models/customer.dart';
+import '../models/delivery.dart';
 import '../providers/customer_provider.dart';
 import '../providers/delivery_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_exit_guard.dart';
 
 /// Home / dashboard screen.
 ///
@@ -24,12 +29,33 @@ class HomeScreen extends ConsumerWidget {
       case 0:
         break; // already here
       case 1:
+        AnalyticsService.instance.trackButtonClicked(
+          buttonName: 'open_customers',
+          screenName: 'Home',
+          routeName: '/home',
+          elementType: 'bottom_nav',
+          elementText: 'Customers',
+        );
         context.go('/customers');
         break;
       case 2:
+        AnalyticsService.instance.trackButtonClicked(
+          buttonName: 'open_reports',
+          screenName: 'Home',
+          routeName: '/home',
+          elementType: 'bottom_nav',
+          elementText: 'Reports',
+        );
         context.go('/reports');
         break;
       case 3:
+        AnalyticsService.instance.trackButtonClicked(
+          buttonName: 'open_settings',
+          screenName: 'Home',
+          routeName: '/home',
+          elementType: 'bottom_nav',
+          elementText: 'Settings',
+        );
         context.go('/settings');
         break;
     }
@@ -37,222 +63,332 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final customersAsync  = ref.watch(activeCustomersProvider);
+    final l10n = AppLocalizations.of(context)!;
+    final customersAsync = ref.watch(activeCustomersProvider);
     final deliveriesAsync = ref.watch(todayDeliveriesProvider);
-    final now             = DateTime.now();
+    final now = DateTime.now();
+    final statCards = _buildStatCards(
+      context,
+      l10n,
+      customersAsync,
+      deliveriesAsync,
+    );
 
-    return Scaffold(
-      backgroundColor: kCream,
-      appBar: AppBar(
-        title: const Text('DoodHisaab'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-            onPressed: () => context.go('/settings'),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        color: kGreen,
-        onRefresh: () async {
-          ref.invalidate(activeCustomersProvider);
-          ref.invalidate(todayDeliveriesProvider);
-        },
-        child: ListView(
-          padding: const EdgeInsets.only(top: 12, bottom: 24),
-          children: [
-            // ── Date card ──────────────────────────────────────────────────
-            _DateCard(date: now),
-
-            const SizedBox(height: 10),
-
-            // ── Stats row ──────────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  // Served today / total
-                  Expanded(
-                    child: _StatCard(
-                      label: 'Served',
-                      value: deliveriesAsync.when(
-                        loading: () => null,
-                        error: (_, __) => '—',
-                        data: (dels) => '${dels.where((d) => d.status == 'confirmed').length}',
-                      ),
-                      suffix: customersAsync.maybeWhen(
-                        data: (cs) => '/ ${cs.length}',
-                        orElse: () => null,
-                      ),
-                      icon: Icons.check_circle_outline,
-                      color: kGreen,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // Total liters today
-                  Expanded(
-                    child: _StatCard(
-                      label: 'Liters',
-                      value: deliveriesAsync.when(
-                        loading: () => null,
-                        error: (_, __) => '—',
-                        data: (dels) {
-                          final l = dels
-                              .where((d) => d.status == 'confirmed')
-                              .fold(0.0, (s, d) => s + d.liters);
-                          return l % 1 == 0 ? '${l.toInt()}' : l.toStringAsFixed(1);
-                        },
-                      ),
-                      icon: Icons.water_drop_outlined,
-                      color: kAmber,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // Active customers
-                  Expanded(
-                    child: _StatCard(
-                      label: 'Customers',
-                      value: customersAsync.when(
-                        loading: () => null,
-                        error: (_, __) => '—',
-                        data: (cs) => '${cs.length}',
-                      ),
-                      icon: Icons.people_outline,
-                      color: kMittiBrown,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // ── Primary action: Start delivery ─────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ElevatedButton.icon(
-                onPressed: () => context.push('/delivery/entry'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(kConfirmButtonHeight),
-                  backgroundColor: kGreen,
-                  foregroundColor: kWhite,
-                  textStyle: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'NotoNastaliqUrdu',
-                  ),
-                ),
-                icon: const Icon(Icons.local_shipping, size: 28),
-                label: const Text('Start Delivery'),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── Secondary action: Record payment ───────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OutlinedButton.icon(
-                onPressed: () => context.push('/payment/entry'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(kButtonHeight),
-                  foregroundColor: kGreen,
-                  side: const BorderSide(color: kGreen, width: 1.5),
-                  textStyle: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'NotoNastaliqUrdu',
-                  ),
-                ),
-                icon: const Icon(Icons.payments_outlined),
-                label: const Text('Record Payment'),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── Quick actions row ──────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  _QuickTile(
-                    label: 'Customers',
-                    icon: Icons.people_outline,
-                    onTap: () => context.go('/customers'),
-                  ),
-                  const SizedBox(width: 10),
-                  _QuickTile(
-                    label: 'Reports',
-                    icon: Icons.bar_chart,
-                    onTap: () => context.go('/reports'),
-                  ),
-                  const SizedBox(width: 10),
-                  _QuickTile(
-                    label: 'Expenses',
-                    icon: Icons.receipt_long,
-                    onTap: () => context.push('/expenses/new'),
-                  ),
-                  const SizedBox(width: 10),
-                  _QuickTile(
-                    label: 'Income',
-                    icon: Icons.add_circle_outline,
-                    onTap: () => context.push('/income/new'),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // ── Today's delivery summary banner ────────────────────────────
-            deliveriesAsync.when(
-              loading: () => const _SkeletonBanner(),
-              error: (_, __) => const SizedBox.shrink(),
-              data: (dels) {
-                final confirmed = dels.where((d) => d.status == 'confirmed').toList();
-                if (confirmed.isEmpty) return const _EmptyBanner();
-                final liters = confirmed.fold(0.0, (s, d) => s + d.liters);
-                final litersText = liters % 1 == 0
-                    ? '${liters.toInt()}'
-                    : liters.toStringAsFixed(1);
-                return _SuccessBanner(
-                  count: confirmed.length,
-                  litersText: litersText,
+    return AppExitGuard(
+      child: Scaffold(
+        backgroundColor: kCream,
+        appBar: AppBar(
+          title: const Text('DoodHisaab'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: l10n.settingsTitle,
+              onPressed: () {
+                AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'open_settings',
+                  screenName: 'Home',
+                  routeName: '/home',
+                  elementType: 'icon_button',
+                  elementText: l10n.settingsTitle,
                 );
+                context.go('/settings');
               },
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        onTap: (i) => _onNavTap(context, i),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Home',
+        body: RefreshIndicator(
+          color: kGreen,
+          onRefresh: () async {
+            ref.invalidate(activeCustomersProvider);
+            ref.invalidate(todayDeliveriesProvider);
+          },
+          child: ListView(
+            padding: const EdgeInsets.only(top: 12, bottom: 24),
+            children: [
+              // ── Date card ──────────────────────────────────────────────────
+              _DateCard(date: now),
+
+              const SizedBox(height: 10),
+
+              // ── Stats row ──────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  textDirection: TextDirection.ltr,
+                  children: statCards,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ── Primary action: Start delivery ─────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    AnalyticsService.instance.trackButtonClicked(
+                      buttonName: 'record_delivery',
+                      screenName: 'Home',
+                      routeName: '/home',
+                      elementType: 'button',
+                      elementText: l10n.startDelivery,
+                    );
+                    context.push('/delivery/entry');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(kConfirmButtonHeight),
+                    backgroundColor: kGreen,
+                    foregroundColor: kWhite,
+                    textStyle: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'NotoNastaliqUrdu',
+                    ),
+                  ),
+                  icon: const Icon(Icons.local_shipping, size: 28),
+                  label: Text(l10n.startDelivery),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── Secondary action: Record payment ───────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    AnalyticsService.instance.trackButtonClicked(
+                      buttonName: 'record_payment',
+                      screenName: 'Home',
+                      routeName: '/home',
+                      elementType: 'button',
+                      elementText: l10n.recordPayment,
+                    );
+                    context.push('/payment/entry');
+                  },
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(kButtonHeight),
+                    foregroundColor: kGreen,
+                    side: const BorderSide(color: kGreen, width: 1.5),
+                    textStyle: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'NotoNastaliqUrdu',
+                    ),
+                  ),
+                  icon: const Icon(Icons.payments_outlined),
+                  label: Text(l10n.recordPayment),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── Quick actions row ──────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    _QuickTile(
+                      label: l10n.expenses,
+                      icon: Icons.receipt_long,
+                      onTap: () {
+                        AnalyticsService.instance.trackButtonClicked(
+                          buttonName: 'open_expenses',
+                          screenName: 'Home',
+                          routeName: '/home',
+                          elementType: 'tile',
+                          elementText: l10n.expenses,
+                        );
+                        context.push('/expenses/new');
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    _QuickTile(
+                      label: l10n.income,
+                      icon: Icons.add_circle_outline,
+                      onTap: () {
+                        AnalyticsService.instance.trackButtonClicked(
+                          buttonName: 'add_other_income',
+                          screenName: 'Home',
+                          routeName: '/home',
+                          elementType: 'tile',
+                          elementText: l10n.income,
+                        );
+                        context.push('/income/new');
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    _QuickTile(
+                      label: l10n.settingsMilkPrice,
+                      icon: Icons.monetization_on,
+                      onTap: () {
+                        AnalyticsService.instance.trackButtonClicked(
+                          buttonName: 'change_price',
+                          screenName: 'Home',
+                          routeName: '/home',
+                          elementType: 'tile',
+                          elementText: l10n.settingsMilkPrice,
+                        );
+                        context.push('/settings/price');
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    _QuickTile(
+                      label: l10n.settingsBackup,
+                      icon: Icons.backup,
+                      onTap: () {
+                        AnalyticsService.instance.trackButtonClicked(
+                          buttonName: 'backup_now',
+                          screenName: 'Home',
+                          routeName: '/home',
+                          elementType: 'tile',
+                          elementText: l10n.settingsBackup,
+                        );
+                        context.push('/settings/backup');
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // ── Today's delivery summary banner ────────────────────────────
+              deliveriesAsync.when(
+                loading: () => const _SkeletonBanner(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (dels) {
+                  final confirmed =
+                      dels.where((d) => d.status == 'confirmed').toList();
+                  if (confirmed.isEmpty) return const _EmptyBanner();
+                  final liters = confirmed.fold(0.0, (s, d) => s + d.liters);
+                  final litersText = liters % 1 == 0
+                      ? '${liters.toInt()}'
+                      : liters.toStringAsFixed(1);
+                  return _SuccessBanner(
+                    l10n: l10n,
+                    count: confirmed.length,
+                    litersText: litersText,
+                  );
+                },
+              ),
+            ],
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline),
-            activeIcon: Icon(Icons.people),
-            label: 'Customers',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            activeIcon: Icon(Icons.bar_chart),
-            label: 'Reports',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+        ),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: 0,
+          onTap: (i) => _onNavTap(context, i),
+          items: [
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.home_outlined),
+              activeIcon: const Icon(Icons.home),
+              label: l10n.navHome,
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.people_outline),
+              activeIcon: const Icon(Icons.people),
+              label: l10n.navCustomers,
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.bar_chart),
+              activeIcon: const Icon(Icons.bar_chart),
+              label: l10n.navReports,
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.settings_outlined),
+              activeIcon: const Icon(Icons.settings),
+              label: l10n.navSettings,
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  List<Widget> _buildStatCards(
+    BuildContext context,
+    AppLocalizations l10n,
+    AsyncValue<List<Customer>> customersAsync,
+    AsyncValue<List<Delivery>> deliveriesAsync,
+  ) {
+    final totalCustomers = customersAsync.maybeWhen(
+      data: (customers) => customers.length,
+      orElse: () => null,
+    );
+    final confirmedDeliveries = deliveriesAsync.maybeWhen(
+      data: (deliveries) => deliveries
+          .where((delivery) => delivery.status == 'confirmed')
+          .toList(),
+      orElse: () => null,
+    );
+    final servedCount = confirmedDeliveries?.length;
+    final servedValue = totalCustomers == null || servedCount == null
+        ? deliveriesAsync.when(
+            loading: () => null,
+            error: (_, __) => '—',
+            data: (_) => '—',
+          )
+        : totalCustomers == 0
+            ? '—'
+            : '$servedCount';
+    final servedSuffix =
+        totalCustomers == null || servedCount == null || totalCustomers == 0
+            ? null
+            : '/ $totalCustomers';
+
+    final (servedIcon, servedColor) =
+        servedCount == null || totalCustomers == null
+            ? (Icons.check_circle_outline, kMutedGray)
+            : totalCustomers == 0 || servedCount == 0
+                ? (Icons.check_circle_outline, kMutedGray)
+                : servedCount < totalCustomers
+                    ? (Icons.pending_outlined, kAmber)
+                    : (Icons.check_circle, kGreen);
+
+    return [
+      Expanded(
+        child: _StatCard(
+          label: l10n.served,
+          value: servedValue,
+          suffix: servedSuffix,
+          icon: servedIcon,
+          color: servedColor,
+        ),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: _StatCard(
+          label: l10n.liters,
+          value: deliveriesAsync.when(
+            loading: () => null,
+            error: (_, __) => '—',
+            data: (deliveries) {
+              final liters = deliveries
+                  .where((delivery) => delivery.status == 'confirmed')
+                  .fold<double>(0.0, (sum, delivery) => sum + delivery.liters);
+              return liters % 1 == 0
+                  ? '${liters.toInt()}'
+                  : liters.toStringAsFixed(1);
+            },
+          ),
+          icon: Icons.water_drop_outlined,
+          color: kAmber,
+        ),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: _StatCard(
+          label: l10n.customers,
+          value: customersAsync.when(
+            loading: () => null,
+            error: (_, __) => '—',
+            data: (customers) => '${customers.length}',
+          ),
+          icon: Icons.people_outline,
+          color: kMittiBrown,
+        ),
+      ),
+    ];
   }
 }
 
@@ -263,13 +399,25 @@ class _DateCard extends StatelessWidget {
   const _DateCard({required this.date});
 
   static const _months = [
-    '', 'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    '',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
 
   @override
   Widget build(BuildContext context) {
     final label = '${date.day} ${_months[date.month]} ${date.year}';
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -284,8 +432,9 @@ class _DateCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Today',
-                  style: kCaptionStyle.copyWith(color: kWhite.withOpacity(0.8))),
+              Text(l10n.today,
+                  style:
+                      kCaptionStyle.copyWith(color: kWhite.withOpacity(0.8))),
               const SizedBox(height: 2),
               Text(
                 label,
@@ -303,8 +452,8 @@ class _DateCard extends StatelessWidget {
 
 class _StatCard extends StatelessWidget {
   final String label;
-  final String? value;   // null = loading
-  final String? suffix;  // optional denominator text
+  final String? value; // null = loading
+  final String? suffix; // optional denominator text
   final IconData icon;
   final Color color;
 
@@ -344,7 +493,8 @@ class _StatCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(value!, style: kTitleStyle.copyWith(color: color, fontSize: 20)),
+                Text(value!,
+                    style: kTitleStyle.copyWith(color: color, fontSize: 20)),
                 if (suffix != null) ...[
                   const SizedBox(width: 4),
                   Text(suffix!, style: kCaptionStyle),
@@ -402,9 +552,14 @@ class _QuickTile extends StatelessWidget {
 }
 
 class _SuccessBanner extends StatelessWidget {
+  final AppLocalizations l10n;
   final int count;
   final String litersText;
-  const _SuccessBanner({required this.count, required this.litersText});
+  const _SuccessBanner({
+    required this.l10n,
+    required this.count,
+    required this.litersText,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -422,8 +577,8 @@ class _SuccessBanner extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              '$count customers received $litersText liters today',
-              style: kBodyLgUrduStyle.copyWith(color: kGreen),
+              l10n.deliverySummary(count, litersText),
+              style: _bannerTextStyle(context, kGreen),
             ),
           ),
         ],
@@ -437,6 +592,7 @@ class _EmptyBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.all(14),
@@ -450,13 +606,19 @@ class _EmptyBanner extends StatelessWidget {
           const Icon(Icons.info_outline, color: kAmber, size: 26),
           const SizedBox(width: 12),
           Text(
-            'No deliveries recorded for today yet',
-            style: kBodyLgUrduStyle.copyWith(color: kAmber),
+            l10n.noDairyToday,
+            style: _bannerTextStyle(context, kAmber),
           ),
         ],
       ),
     );
   }
+}
+
+TextStyle _bannerTextStyle(BuildContext context, Color color) {
+  final locale = Localizations.localeOf(context).languageCode;
+  final baseStyle = locale == 'ur' ? kBodyLgUrduStyle : kBodyLgStyle;
+  return baseStyle.copyWith(color: color);
 }
 
 class _SkeletonBanner extends StatelessWidget {

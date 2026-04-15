@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/analytics_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/customer.dart';
 import '../../providers/customer_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_exit_guard.dart';
 
 /// Customer list screen.
 ///
@@ -14,7 +17,7 @@ import '../../theme/app_theme.dart';
 ///    Filter is case-insensitive match on customer name.
 ///  - Reorder: AppBar sort icon → /customers/reorder route (drag-to-reorder).
 ///  - Row: 64dp (kListRowHeight). Avatar circle + name + balance badge +
-///    [ادائیگی] button + [تاریخ] button. No swipe-to-delete in MVP.
+///    [Payment] button + [History] button. No swipe-to-delete in MVP.
 ///  - FAB → /customers/new (add customer).
 ///  - Pull-to-refresh invalidates [activeCustomersProvider].
 ///  - Tapping a row → /customers/:id (profile).
@@ -46,20 +49,50 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
   void _onNavTap(BuildContext context, int index) {
     switch (index) {
       case 0:
+        AnalyticsService.instance.trackButtonClicked(
+          buttonName: 'open_home',
+          screenName: 'Customers List',
+          routeName: '/customers',
+          elementType: 'bottom_nav',
+          elementText: 'Home',
+        );
         context.go('/home');
         break;
       case 1:
         break; // already here
       case 2:
+        AnalyticsService.instance.trackButtonClicked(
+          buttonName: 'open_reports',
+          screenName: 'Customers List',
+          routeName: '/customers',
+          elementType: 'bottom_nav',
+          elementText: 'Reports',
+        );
         context.go('/reports');
         break;
       case 3:
+        AnalyticsService.instance.trackButtonClicked(
+          buttonName: 'open_settings',
+          screenName: 'Customers List',
+          routeName: '/customers',
+          elementType: 'bottom_nav',
+          elementText: 'Settings',
+        );
         context.go('/settings');
         break;
     }
   }
 
   void _toggleSearch() {
+    final openingSearch = !_searchActive;
+    AnalyticsService.instance.trackButtonClicked(
+      buttonName:
+          openingSearch ? 'open_customer_search' : 'close_customer_search',
+      screenName: 'Customers List',
+      routeName: '/customers',
+      elementType: 'icon_button',
+      elementText: openingSearch ? 'Search' : 'Close Search',
+    );
     setState(() {
       _searchActive = !_searchActive;
       if (!_searchActive) {
@@ -77,119 +110,183 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final customersAsync = ref.watch(activeCustomersProvider);
+    final hasCustomers = customersAsync.valueOrNull?.isNotEmpty == true;
 
-    return Scaffold(
-      backgroundColor: kCream,
-      appBar: AppBar(
-        title: _searchActive
-            ? TextField(
-                controller: _searchCtrl,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Search by name...',
-                  hintStyle: TextStyle(color: kMutedGray),
-                  border: InputBorder.none,
-                ),
-                style: kBodyStyle.copyWith(color: kInkBlack),
-                onChanged: (v) => setState(() => _query = v),
-              )
-            : const Text('Customers'),
-        actions: [
-          // Search toggle
-          IconButton(
-            icon: Icon(_searchActive ? Icons.close : Icons.search),
-            tooltip: _searchActive ? 'Close' : 'Search',
-            onPressed: _toggleSearch,
-          ),
-          // Route reorder
-          if (!_searchActive)
-            IconButton(
-              icon: const Icon(Icons.swap_vert),
-              tooltip: 'Reorder',
-              onPressed: () => context.push('/customers/reorder'),
-            ),
-        ],
-      ),
-      body: customersAsync.when(
-        loading: () => const _ListSkeleton(),
-        error: (e, _) => _ErrorView(
-          message: e.toString(),
-          onRetry: () => ref.invalidate(activeCustomersProvider),
+    return AppExitGuard(
+      child: Scaffold(
+        backgroundColor: kCream,
+        appBar: AppBar(
+          title: _searchActive && hasCustomers
+              ? TextField(
+                  controller: _searchCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: l10n.searchByName,
+                    hintStyle: const TextStyle(color: kMutedGray),
+                    border: InputBorder.none,
+                  ),
+                  style: kBodyStyle.copyWith(color: kInkBlack),
+                  onChanged: (v) => setState(() => _query = v),
+                )
+              : Text(l10n.navCustomers),
+          actions: [
+            // Search toggle
+            if (hasCustomers)
+              IconButton(
+                icon: Icon(_searchActive ? Icons.close : Icons.search),
+                tooltip: _searchActive ? l10n.closeAction : l10n.searchAction,
+                onPressed: _toggleSearch,
+              ),
+            // Route reorder
+            if (!_searchActive && hasCustomers)
+              IconButton(
+                icon: const Icon(Icons.swap_vert),
+                tooltip: l10n.reorderAction,
+                onPressed: () {
+                  AnalyticsService.instance.trackButtonClicked(
+                    buttonName: 'open_route_reorder',
+                    screenName: 'Customers List',
+                    routeName: '/customers',
+                    elementType: 'icon_button',
+                    elementText: l10n.reorderAction,
+                  );
+                  context.push('/customers/reorder');
+                },
+              ),
+          ],
         ),
-        data: (customers) {
-          final visible = _filtered(customers);
-          if (customers.isEmpty) {
-            return _EmptyView(onAdd: () => context.push('/customers/new'));
-          }
-          if (visible.isEmpty) {
-            return Center(
-              child: Text(
-                'No results for "$_query"',
-                style: kBodyStyle.copyWith(color: kMutedGray),
+        body: customersAsync.when(
+          loading: () => const _ListSkeleton(),
+          error: (e, _) => _ErrorView(
+            message: e.toString(),
+            onRetry: () => ref.invalidate(activeCustomersProvider),
+          ),
+          data: (customers) {
+            final visible = _filtered(customers);
+            if (customers.isEmpty) {
+              return _EmptyView(
+                onAdd: () {
+                  AnalyticsService.instance.trackButtonClicked(
+                    buttonName: 'add_customer',
+                    screenName: 'Customers List',
+                    routeName: '/customers',
+                    elementType: 'button',
+                    elementText: l10n.btnAddCustomer,
+                  );
+                  context.push('/customers/new');
+                },
+                showAddButton: !_searchActive,
+              );
+            }
+            if (visible.isEmpty) {
+              return Center(
+                child: Text(
+                  l10n.noSearchResults(_query),
+                  style: kBodyStyle.copyWith(color: kMutedGray),
+                ),
+              );
+            }
+            return RefreshIndicator(
+              color: kGreen,
+              onRefresh: () async => ref.invalidate(activeCustomersProvider),
+              // ── Performance: itemExtent eliminates per-item layout measurement.
+              // Flutter can jump to any scroll position without rendering every item.
+              // _CustomerRow draws its own bottom border — no separatorBuilder needed.
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: visible.length,
+                itemExtent: kListRowHeight,
+                itemBuilder: (context, index) {
+                  return _CustomerRow(
+                    customer: visible[index],
+                    onTap: () {
+                      AnalyticsService.instance.trackButtonClicked(
+                        buttonName: 'open_customer_profile',
+                        screenName: 'Customers List',
+                        routeName: '/customers',
+                        elementType: 'row',
+                        elementText: visible[index].name,
+                      );
+                      context.push('/customers/${visible[index].customerId}');
+                    },
+                    onPayment: () {
+                      AnalyticsService.instance.trackButtonClicked(
+                        buttonName: 'record_payment',
+                        screenName: 'Customers List',
+                        routeName: '/customers',
+                        elementType: 'row_action',
+                        elementText: 'Payment',
+                      );
+                      context.push(
+                        '/payment/entry',
+                        extra: visible[index].customerId,
+                      );
+                    },
+                    onHistory: () {
+                      AnalyticsService.instance.trackButtonClicked(
+                        buttonName: 'open_customer_statement',
+                        screenName: 'Customers List',
+                        routeName: '/customers',
+                        elementType: 'row_action',
+                        elementText: 'History',
+                      );
+                      context.push(
+                        '/reports/statement/${visible[index].customerId}',
+                      );
+                    },
+                  );
+                },
               ),
             );
-          }
-          return RefreshIndicator(
-            color: kGreen,
-            onRefresh: () async => ref.invalidate(activeCustomersProvider),
-            // ── Performance: itemExtent eliminates per-item layout measurement.
-            // Flutter can jump to any scroll position without rendering every item.
-            // _CustomerRow draws its own bottom border — no separatorBuilder needed.
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: visible.length,
-              itemExtent: kListRowHeight,
-              itemBuilder: (context, index) {
-                return _CustomerRow(
-                  customer: visible[index],
-                  onTap: () =>
-                      context.push('/customers/${visible[index].customerId}'),
-                  onPayment: () => context.push(
-                    '/payment/entry',
-                    extra: visible[index].customerId,
-                  ),
-                  onHistory: () => context.push(
-                    '/reports/statement/${visible[index].customerId}',
-                  ),
-                );
-              },
+          },
+        ),
+        floatingActionButton: !hasCustomers && _searchActive
+            ? null
+            : FloatingActionButton.extended(
+                heroTag: 'customers-fab',
+                onPressed: () {
+                  AnalyticsService.instance.trackButtonClicked(
+                    buttonName: 'add_customer',
+                    screenName: 'Customers List',
+                    routeName: '/customers',
+                    elementType: 'fab',
+                    elementText: l10n.btnAddCustomer,
+                  );
+                  context.push('/customers/new');
+                },
+                backgroundColor: kGreen,
+                foregroundColor: kWhite,
+                icon: const Icon(Icons.person_add),
+                label: Text(l10n.btnAddCustomer),
+              ),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: 1,
+          onTap: (i) => _onNavTap(context, i),
+          items: [
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.home_outlined),
+              activeIcon: const Icon(Icons.home),
+              label: l10n.navHome,
             ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/customers/new'),
-        backgroundColor: kGreen,
-        foregroundColor: kWhite,
-        icon: const Icon(Icons.person_add),
-        label: const Text('New Customer'),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 1,
-        onTap: (i) => _onNavTap(context, i),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline),
-            activeIcon: Icon(Icons.people),
-            label: 'Customers',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_outlined),
-            activeIcon: Icon(Icons.bar_chart),
-            label: 'Reports',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.people_outline),
+              activeIcon: const Icon(Icons.people),
+              label: l10n.navCustomers,
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.bar_chart),
+              activeIcon: const Icon(Icons.bar_chart),
+              label: l10n.navReports,
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.settings_outlined),
+              activeIcon: const Icon(Icons.settings),
+              label: l10n.navSettings,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -215,6 +312,7 @@ class _CustomerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Material(
       color: kCream,
       child: InkWell(
@@ -246,7 +344,11 @@ class _CustomerRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      '${customer.defaultLiters % 1 == 0 ? customer.defaultLiters.toInt() : customer.defaultLiters.toStringAsFixed(1)} L daily',
+                      l10n.dailyLitersShort(
+                        customer.defaultLiters % 1 == 0
+                            ? '${customer.defaultLiters.toInt()}'
+                            : customer.defaultLiters.toStringAsFixed(1),
+                      ),
                       style: kCaptionStyle,
                     ),
                   ],
@@ -264,7 +366,7 @@ class _CustomerRow extends StatelessWidget {
               _RowIconButton(
                 icon: Icons.payments_outlined,
                 color: kGreen,
-                tooltip: 'Payment',
+                tooltip: l10n.paymentAction,
                 onTap: onPayment,
               ),
 
@@ -272,7 +374,7 @@ class _CustomerRow extends StatelessWidget {
               _RowIconButton(
                 icon: Icons.history,
                 color: kMittiBrown,
-                tooltip: 'History',
+                tooltip: l10n.historyAction,
                 onTap: onHistory,
               ),
             ],
@@ -329,20 +431,23 @@ class _BalanceBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final Color bg;
     final String label;
 
     if (balance > 0.01) {
       bg = kAlertRed;
       final rounded = (balance * 100).round() / 100;
-      label = '₨${rounded % 1 == 0 ? rounded.toInt() : rounded.toStringAsFixed(0)}';
+      label =
+          '₨${rounded % 1 == 0 ? rounded.toInt() : rounded.toStringAsFixed(0)}';
     } else if (balance < -0.01) {
       bg = kAmber;
       final rounded = (balance.abs() * 100).round() / 100;
-      label = '+₨${rounded % 1 == 0 ? rounded.toInt() : rounded.toStringAsFixed(0)}';
+      label =
+          '+₨${rounded % 1 == 0 ? rounded.toInt() : rounded.toStringAsFixed(0)}';
     } else {
       bg = kGreen;
-      label = 'Clear';
+      label = l10n.balanceClear;
     }
 
     return Container(
@@ -481,10 +586,16 @@ class _ErrorView extends StatelessWidget {
 
 class _EmptyView extends StatelessWidget {
   final VoidCallback onAdd;
-  const _EmptyView({required this.onAdd});
+  final bool showAddButton;
+
+  const _EmptyView({
+    required this.onAdd,
+    required this.showAddButton,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -494,22 +605,24 @@ class _EmptyView extends StatelessWidget {
             const Icon(Icons.people_outline, color: kMutedGray, size: 64),
             const SizedBox(height: 16),
             Text(
-              'No customers yet',
+              l10n.noCustomersYet,
               style: kHeadlineStyle.copyWith(color: kMutedGray),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Add your first customer',
-              style: kBodyLgUrduStyle.copyWith(color: kMutedGray),
+              l10n.addFirstCustomer,
+              style: kBodyLgStyle.copyWith(color: kMutedGray),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.person_add),
-              label: const Text('New Customer'),
-            ),
+            if (showAddButton) ...[
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.person_add),
+                label: Text(l10n.btnAddCustomer),
+              ),
+            ],
           ],
         ),
       ),

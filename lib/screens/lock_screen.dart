@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -5,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/services/analytics_service.dart';
 import '../db/settings_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_exit_guard.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LockScreen — app entry gate.
@@ -111,18 +114,15 @@ class _PinPadViewState extends State<_PinPadView>
         weight: 1,
       ),
       TweenSequenceItem(
-        tween: Tween(
-            begin: const Offset(0.05, 0), end: const Offset(-0.05, 0)),
+        tween: Tween(begin: const Offset(0.05, 0), end: const Offset(-0.05, 0)),
         weight: 2,
       ),
       TweenSequenceItem(
-        tween: Tween(
-            begin: const Offset(-0.05, 0), end: const Offset(0.03, 0)),
+        tween: Tween(begin: const Offset(-0.05, 0), end: const Offset(0.03, 0)),
         weight: 2,
       ),
       TweenSequenceItem(
-        tween:
-            Tween(begin: const Offset(0.03, 0), end: Offset.zero),
+        tween: Tween(begin: const Offset(0.03, 0), end: Offset.zero),
         weight: 1,
       ),
     ]).animate(CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeInOut));
@@ -154,9 +154,23 @@ class _PinPadViewState extends State<_PinPadView>
   void _verify(String pin) {
     final hash = sha256.convert(utf8.encode(pin)).toString();
     if (hash == widget.storedHash) {
+      unawaited(
+        AnalyticsService.instance.trackFeatureUsed(
+          featureName: 'lock_success',
+          screenName: 'Lock',
+          routeName: '/lock',
+        ),
+      );
       context.go('/home');
     } else {
       // Wrong PIN — shake + clear.
+      unawaited(
+        AnalyticsService.instance.trackFeatureUsed(
+          featureName: 'lock_failed',
+          screenName: 'Lock',
+          routeName: '/lock',
+        ),
+      );
       HapticFeedback.selectionClick();
       _shakeCtrl.forward(from: 0).then((_) {
         if (mounted) setState(() => _input = '');
@@ -168,49 +182,51 @@ class _PinPadViewState extends State<_PinPadView>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kCream,
-      body: SafeArea(
-        child: Column(
-          children: [
-            const Spacer(flex: 2),
+    return AppExitGuard(
+      child: Scaffold(
+        backgroundColor: kCream,
+        body: SafeArea(
+          child: Column(
+            children: [
+              const Spacer(flex: 2),
 
-            // App name
-            const Text(
-              'DoodHisaab',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: kGreen,
+              // App name
+              const Text(
+                'DoodHisaab',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: kGreen,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Enter PIN',
-              style: kBodyStyle.copyWith(color: kMutedGray, fontSize: 15),
-            ),
-
-            const Spacer(flex: 1),
-
-            // 4 dot indicators — animated with shake.
-            SlideTransition(
-              position: _shakeAnim,
-              child: _DotIndicators(filledCount: _input.length),
-            ),
-
-            const Spacer(flex: 2),
-
-            // PIN numpad — digits only, no decimal key.
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: _PinNumpad(
-                onDigit: _onDigit,
-                onBackspace: _onBackspace,
+              const SizedBox(height: 8),
+              Text(
+                'Enter PIN',
+                style: kBodyStyle.copyWith(color: kMutedGray, fontSize: 15),
               ),
-            ),
 
-            const Spacer(flex: 1),
-          ],
+              const Spacer(flex: 1),
+
+              // 4 dot indicators — animated with shake.
+              SlideTransition(
+                position: _shakeAnim,
+                child: _DotIndicators(filledCount: _input.length),
+              ),
+
+              const Spacer(flex: 2),
+
+              // PIN numpad — digits only, no decimal key.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: _PinNumpad(
+                  onDigit: _onDigit,
+                  onBackspace: _onBackspace,
+                ),
+              ),
+
+              const Spacer(flex: 1),
+            ],
+          ),
         ),
       ),
     );

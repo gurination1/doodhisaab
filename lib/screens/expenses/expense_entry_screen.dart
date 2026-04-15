@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/expense_repository.dart';
 import '../../models/expense.dart';
+import '../../providers/delivery_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/numpad.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Urdu category labels — keyed to Expense.validCategories strings
-// ─────────────────────────────────────────────────────────────────────────────
-
-const Map<String, String> _categoryUrdu = {
-  'Feed':        'چارہ',
-  'Medicine':    'دوائی',
-  'Fuel':        'ایندھن',
-  'Electricity': 'بجلی',
-  'Labor':       'مزدوری',
-  'Other':       'دیگر',
+const Map<String, String> _categoryLabels = {
+  'Feed': 'Feed',
+  'Medicine': 'Medicine',
+  'Fuel': 'Fuel',
+  'Electricity': 'Electricity',
+  'Labor': 'Labor',
+  'Other': 'Other',
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -31,14 +31,14 @@ const Map<String, String> _categoryUrdu = {
 ///  - Note via system keyboard (text, not number).
 ///  - Write-on-save: one INSERT, no draft state.
 ///  - No expense edit/delete on this screen. Delete is available in Reports.
-class ExpenseEntryScreen extends StatefulWidget {
+class ExpenseEntryScreen extends ConsumerStatefulWidget {
   const ExpenseEntryScreen({super.key});
 
   @override
-  State<ExpenseEntryScreen> createState() => _ExpenseEntryScreenState();
+  ConsumerState<ExpenseEntryScreen> createState() => _ExpenseEntryScreenState();
 }
 
-class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
+class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
   // ── Repo ───────────────────────────────────────────────────────────────────
   final _expenseRepo = ExpenseRepository();
 
@@ -61,17 +61,21 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
   double? get _amount => double.tryParse(_numpadValue);
 
   bool get _canSave =>
-      !_saving &&
-      _selectedCategory != null &&
-      _amount != null &&
-      _amount! > 0;
+      !_saving && _selectedCategory != null && _amount != null && _amount! > 0;
 
   // ── Save ────────────────────────────────────────────────────────────────────
 
   Future<void> _doSave() async {
     if (!_canSave) return;
-    HapticFeedback.selectionClick();
     setState(() => _saving = true);
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'save_expense',
+      screenName: 'Expense Entry',
+      routeName: '/expenses/new',
+      elementType: 'button',
+      elementText: 'Save Expense',
+    );
+    HapticFeedback.selectionClick();
 
     final note = _noteController.text.trim().isEmpty
         ? null
@@ -79,20 +83,26 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
 
     await _expenseRepo.addExpense(
       category: _selectedCategory!,
-      amount:   _amount!,
-      note:     note,
+      amount: _amount!,
+      note: note,
     );
+    await AnalyticsService.instance.trackFeatureUsed(
+      featureName: 'expense_entry',
+      screenName: 'Expense Entry',
+      routeName: '/expenses/new',
+      amount: _amount,
+    );
+
+    final now = DateTime.now();
+    ref.invalidate(monthlySummaryProvider(now.year, now.month));
 
     if (!mounted) return;
     setState(() => _saving = false);
 
-    final label = _categoryUrdu[_selectedCategory] ?? _selectedCategory!;
+    final label = _categoryLabels[_selectedCategory] ?? _selectedCategory!;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          '$label — ₹${_amount!.toStringAsFixed(2)} محفوظ',
-          textDirection: TextDirection.rtl,
-        ),
+        content: Text('$label — ₹${_amount!.toStringAsFixed(2)} saved'),
         backgroundColor: kGreen,
         duration: const Duration(seconds: 2),
       ),
@@ -112,8 +122,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          'اخراجات درج کریں',
-          textDirection: TextDirection.rtl,
+          'Record Expense',
           style: TextStyle(
             color: kInkBlack,
             fontSize: 18,
@@ -136,8 +145,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                   const Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'قسم منتخب کریں',
-                      textDirection: TextDirection.rtl,
+                      'Choose Category',
                       style: kLabelStyle,
                     ),
                   ),
@@ -146,9 +154,9 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                   // ── Category chip row — NOT a dropdown ──────────────────────
                   _CategoryChips(
                     categories: Expense.validCategories,
-                    urduLabels: _categoryUrdu,
-                    selected:   _selectedCategory,
-                    onSelect:   (cat) => setState(() => _selectedCategory = cat),
+                    labels: _categoryLabels,
+                    selected: _selectedCategory,
+                    onSelect: (cat) => setState(() => _selectedCategory = cat),
                   ),
                   const SizedBox(height: 24),
 
@@ -156,8 +164,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                   const Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'رقم (روپے)',
-                      textDirection: TextDirection.rtl,
+                      'Amount (Rs)',
                       style: kLabelStyle,
                     ),
                   ),
@@ -169,7 +176,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
 
                   // ── Custom numpad — no system keyboard ──────────────────────
                   NumpadWidget(
-                    value:     _numpadValue,
+                    value: _numpadValue,
                     onChanged: (v) => setState(() => _numpadValue = v),
                   ),
                   const SizedBox(height: 20),
@@ -178,15 +185,14 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                   const Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'نوٹ (اختیاری)',
-                      textDirection: TextDirection.rtl,
+                      'Note (Optional)',
                       style: kLabelStyle,
                     ),
                   ),
                   const SizedBox(height: 8),
                   _NoteField(
                     controller: _noteController,
-                    hint: 'مثال: مہینے کا چارہ',
+                    hint: 'Example: monthly feed',
                   ),
                   const SizedBox(height: 24),
 
@@ -204,8 +210,7 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
                         ),
                       ),
                       child: Text(
-                        'محفوظ کریں',
-                        textDirection: TextDirection.rtl,
+                        'Save',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -229,13 +234,13 @@ class _ExpenseEntryScreenState extends State<ExpenseEntryScreen> {
 /// for low-literacy users. Chips are always visible and tappable.
 class _CategoryChips extends StatelessWidget {
   final List<String> categories;
-  final Map<String, String> urduLabels;
+  final Map<String, String> labels;
   final String? selected;
   final ValueChanged<String> onSelect;
 
   const _CategoryChips({
     required this.categories,
-    required this.urduLabels,
+    required this.labels,
     required this.selected,
     required this.onSelect,
   });
@@ -249,7 +254,7 @@ class _CategoryChips extends StatelessWidget {
       alignment: WrapAlignment.end,
       children: categories.map((cat) {
         final isSelected = cat == selected;
-        final label = urduLabels[cat] ?? cat;
+        final label = labels[cat] ?? cat;
 
         return Material(
           color: Colors.transparent,
@@ -275,9 +280,7 @@ class _CategoryChips extends StatelessWidget {
                 textDirection: TextDirection.rtl,
                 style: TextStyle(
                   fontSize: 15,
-                  fontWeight: isSelected
-                      ? FontWeight.w600
-                      : FontWeight.w400,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                   color: isSelected ? kWhite : kInkBlack,
                 ),
               ),
@@ -317,8 +320,7 @@ class _AmountDisplay extends StatelessWidget {
       child: Align(
         alignment: Alignment.centerRight,
         child: Text(
-          numpadValue.isEmpty ? '0 روپے' : '₹$numpadValue',
-          textDirection: TextDirection.rtl,
+          numpadValue.isEmpty ? '₹0' : '₹$numpadValue',
           style: kTitleStyle.copyWith(
             color: numpadValue.isEmpty ? kMutedGray : kInkBlack,
           ),
@@ -340,18 +342,18 @@ class _NoteField extends StatelessWidget {
     return SizedBox(
       height: kInputHeight,
       child: TextField(
-        controller:    controller,
-        maxLines:      1,
-        textAlign:     TextAlign.right,
+        controller: controller,
+        maxLines: 1,
+        textAlign: TextAlign.right,
         textDirection: TextDirection.rtl,
         style: const TextStyle(fontSize: 16, color: kInkBlack),
         decoration: InputDecoration(
-          hintText:          hint,
-          hintStyle:         const TextStyle(color: kMutedGray, fontSize: 16),
+          hintText: hint,
+          hintStyle: const TextStyle(color: kMutedGray, fontSize: 16),
           hintTextDirection: TextDirection.rtl,
-          filled:            true,
-          fillColor:         kWhite,
-          contentPadding:    const EdgeInsets.symmetric(horizontal: 16),
+          filled: true,
+          fillColor: kWhite,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: kMutedGray),

@@ -19,6 +19,7 @@ class DatabaseProvider {
   DatabaseProvider._();
 
   static Database? _db;
+  static String? dbNameOverrideForTesting;
 
   /// Returns the open database, initializing it on first call.
   static Future<Database> get database async {
@@ -41,7 +42,8 @@ class DatabaseProvider {
   }
 
   static Future<Database> _initDb() async {
-    final path = join(await getDatabasesPath(), kDbName);
+    final dbName = dbNameOverrideForTesting ?? kDbName;
+    final path = join(await getDatabasesPath(), dbName);
     return openDatabase(
       path,
       version: kDbVersion,

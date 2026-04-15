@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/customer_repository.dart';
 import '../../db/delivery_repository.dart';
 import '../../db/settings_repository.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/customer.dart';
 import '../../models/delivery.dart';
 import '../../providers/delivery_provider.dart';
@@ -17,12 +19,12 @@ import '../../widgets/quantity_chips.dart';
 // ─── Phase ────────────────────────────────────────────────────────────────────
 
 enum _Phase {
-  loading,   // awaiting async init
-  recovery,  // showing crash-recovery dialog
-  entry,     // active entry flow
-  saving,    // SAVE ALL in progress
-  success,   // all confirmed, success screen
-  empty,     // no active customers
+  loading, // awaiting async init
+  recovery, // showing crash-recovery dialog
+  entry, // active entry flow
+  saving, // SAVE ALL in progress
+  success, // all confirmed, success screen
+  empty, // no active customers
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -60,8 +62,13 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
   // ── Per-customer entry state ────────────────────────────────────────────────
   // Both maps persist through back/forward navigation.
   int _currentIndex = 0;
-  final Map<String, String> _numpadValues = {};   // customerId → numpad string
-  final Map<String, Delivery> _savedDrafts = {};  // customerId → last written draft
+  final Map<String, String> _numpadValues = {}; // customerId → numpad string
+  final Map<String, Delivery> _savedDrafts =
+      {}; // customerId → last written draft
+  final Set<String> _editedCustomerIds = <String>{};
+  final Set<String> _skippedCustomerIds = <String>{};
+  List<Delivery> _successDrafts = const [];
+  String? _successPaymentCustomerId;
 
   // ── Crash recovery ──────────────────────────────────────────────────────────
   List<Delivery> _recoverableDrafts = [];
@@ -86,8 +93,8 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
 
   Future<void> _init() async {
     final customers = await _customerRepo.getActiveCustomers();
-    final price     = await _customerRepo.getCurrentPrice();
-    final deviceId  = await SettingsRepository.instance.getDeviceId();
+    final price = await _customerRepo.getCurrentPrice();
+    final deviceId = await SettingsRepository.instance.getDeviceId();
     if (!mounted) return;
 
     if (customers.isEmpty) {
@@ -98,15 +105,10 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
     final drafts = await _deliveryRepo.getTodayIncompleteDrafts(deviceId);
     if (!mounted) return;
 
-    // Pre-fill numpad from each customer's default quantity
-    for (final c in customers) {
-      _numpadValues[c.customerId] = _litersStr(c.defaultLiters);
-    }
-
     setState(() {
       _customers = customers;
-      _price     = price;
-      _deviceId  = deviceId;
+      _price = price;
+      _deviceId = deviceId;
       if (drafts.isNotEmpty) {
         _recoverableDrafts = drafts;
         _phase = _Phase.recovery;
@@ -117,7 +119,8 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
     });
 
     if (_recoverableDrafts.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showRecoveryDialog());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _showRecoveryDialog());
     }
   }
 
@@ -125,18 +128,17 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
 
   void _showRecoveryDialog() {
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context)!;
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text(
-          'ادھوری ترسیل ملی',
-          textDirection: TextDirection.rtl,
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        title: Text(
+          l10n.recoveryTitle,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'آج ${_recoverableDrafts.length} گاہکوں کی ترسیل محفوظ نہیں ہوئی۔\n\nجاری رکھیں؟',
-          textDirection: TextDirection.rtl,
+          l10n.recoveryBody,
         ),
         actionsAlignment: MainAxisAlignment.start,
         actions: [
@@ -145,7 +147,7 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
               Navigator.of(ctx).pop();
               _resumeSession();
             },
-            child: const Text('جاری رکھیں', textDirection: TextDirection.rtl),
+            child: Text(l10n.recoveryContinue),
           ),
           TextButton(
             style: TextButton.styleFrom(foregroundColor: kAlertRed),
@@ -153,7 +155,7 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
               Navigator.of(ctx).pop();
               _discardAndRestart();
             },
-            child: const Text('نئی شروع کریں', textDirection: TextDirection.rtl),
+            child: Text(l10n.recoveryRestart),
           ),
         ],
       ),
@@ -184,7 +186,8 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
       _phase = _Phase.entry;
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollAvatarTo(_currentIndex));
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _scrollAvatarTo(_currentIndex));
   }
 
   Future<void> _discardAndRestart() async {
@@ -195,6 +198,11 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
     setState(() {
       _recoverableDrafts = [];
       _sessionId = const Uuid().v4();
+      _currentIndex = 0;
+      _numpadValues.clear();
+      _savedDrafts.clear();
+      _editedCustomerIds.clear();
+      _skippedCustomerIds.clear();
       _phase = _Phase.entry;
     });
   }
@@ -203,91 +211,381 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
 
   Future<void> _confirmCurrent() async {
     HapticFeedback.selectionClick();
+    final l10n = AppLocalizations.of(context)!;
 
-    final c      = _customers[_currentIndex];
-    final liters = double.tryParse(_numpadValues[c.customerId] ?? '') ?? c.defaultLiters;
-    final price  = c.priceOverride ?? _price;
-    final today  = DateTime.now().toIso8601String().substring(0, 10);
+    final c = _customers[_currentIndex];
+    final raw = (_numpadValues[c.customerId] ?? '').trim();
+    final liters = double.tryParse(raw);
+    if (liters == null || liters <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.deliveryInvalidQuantity),
+          ),
+        );
+      }
+      return;
+    }
+    final price = c.priceOverride ?? _price;
+    final today = DateTime.now().toIso8601String().substring(0, 10);
 
     // Write-on-confirm: UPSERT as session_draft immediately.
     // Previous + re-confirm: overwrites the existing draft, no duplicate row.
     final draft = await _deliveryRepo.upsertSessionDraft(
-      sessionId:     _sessionId,
-      customerId:    c.customerId,
-      date:          today,
-      liters:        liters,
+      sessionId: _sessionId,
+      customerId: c.customerId,
+      date: today,
+      liters: liters,
       pricePerLiter: price,
-      deviceId:      _deviceId,
+      deviceId: _deviceId,
     );
 
     _savedDrafts[c.customerId] = draft;
+    _skippedCustomerIds.remove(c.customerId);
+    _editedCustomerIds.remove(c.customerId);
 
     if (_currentIndex < _customers.length - 1) {
       setState(() => _currentIndex++);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollAvatarTo(_currentIndex));
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _scrollAvatarTo(_currentIndex));
     } else {
       await _doSaveAll();
     }
+  }
+
+  Future<void> _clearCurrentEntry() async {
+    if (_customers.isEmpty || _sessionId.isEmpty) return;
+
+    HapticFeedback.selectionClick();
+    final current = _customers[_currentIndex];
+    await _deliveryRepo.deleteSessionDraftForCustomer(
+      _sessionId,
+      current.customerId,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _numpadValues[current.customerId] = '';
+      _savedDrafts.remove(current.customerId);
+      _skippedCustomerIds.remove(current.customerId);
+      _editedCustomerIds.remove(current.customerId);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppLocalizations.of(context)!.deliveryEntryCleared),
+      ),
+    );
+  }
+
+  Future<void> _skipCurrent() async {
+    if (_customers.isEmpty) return;
+
+    HapticFeedback.selectionClick();
+    final current = _customers[_currentIndex];
+    if (_sessionId.isNotEmpty) {
+      await _deliveryRepo.deleteSessionDraftForCustomer(
+        _sessionId,
+        current.customerId,
+      );
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _numpadValues[current.customerId] = '';
+      _savedDrafts.remove(current.customerId);
+      _editedCustomerIds.remove(current.customerId);
+      _skippedCustomerIds.add(current.customerId);
+    });
+
+    if (_currentIndex < _customers.length - 1) {
+      setState(() => _currentIndex++);
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _scrollAvatarTo(_currentIndex));
+      return;
+    }
+
+    if (_savedDrafts.isNotEmpty) {
+      await _doSaveAll();
+      return;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.deliveryAllSkipped),
+        ),
+      );
+      context.go('/home');
+    }
+  }
+
+  void _jumpToCustomer(int index) {
+    if (index < 0 || index >= _customers.length || index == _currentIndex) {
+      return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() => _currentIndex = index);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _scrollAvatarTo(_currentIndex));
   }
 
   void _goPrevious() {
     if (_currentIndex > 0) {
       HapticFeedback.selectionClick();
       setState(() => _currentIndex--);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollAvatarTo(_currentIndex));
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _scrollAvatarTo(_currentIndex));
     }
   }
 
   Future<void> _doSaveAll() async {
     setState(() => _phase = _Phase.saving);
 
+    final successDrafts = List<Delivery>.of(_savedDrafts.values);
+    final successPaymentCustomerId =
+        successDrafts.length == 1 ? successDrafts.first.customerId : null;
+
     // Promote all session_draft → confirmed in a single UPDATE
     await _deliveryRepo.confirmSession(_sessionId);
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'save_delivery',
+      screenName: 'Delivery Entry',
+      routeName: '/delivery/entry',
+      elementType: 'button',
+      elementText: 'Save Delivery',
+    );
+    await AnalyticsService.instance.trackFeatureUsed(
+      featureName: 'delivery_entry',
+      screenName: 'Delivery Entry',
+      routeName: '/delivery/entry',
+      liters: successDrafts.fold<double>(0, (sum, item) => sum + item.liters),
+    );
 
     // Adjust cached_balance per customer (O(1) delta each)
     for (final draft in _savedDrafts.values) {
-      await _customerRepo.adjustCachedBalance(draft.customerId, draft.totalValue);
+      await _customerRepo.adjustCachedBalance(
+          draft.customerId, draft.totalValue);
     }
 
     // Invalidate so home screen and reports see fresh data
     ref.invalidate(todayDeliveriesProvider);
+    final now = DateTime.now();
+    ref.invalidate(monthlySummaryProvider(now.year, now.month));
 
-    setState(() => _phase = _Phase.success);
+    setState(() {
+      _successDrafts = successDrafts;
+      _successPaymentCustomerId = successPaymentCustomerId;
+      _phase = _Phase.success;
+    });
   }
 
   // ── Discard / back ────────────────────────────────────────────────────────────
 
-  Future<bool> _confirmDiscard() async {
-    if (_savedDrafts.isEmpty) return true;
+  bool get _hasUnsavedCurrentValue {
+    if (_customers.isEmpty) return false;
+    final current = _customers[_currentIndex];
+    final raw = (_numpadValues[current.customerId] ?? '').trim();
+    if (raw.isEmpty) return false;
+    final liters = double.tryParse(raw);
+    return liters != null && liters > 0;
+  }
 
-    final result = await showDialog<bool>(
+  bool get _hasSessionProgress =>
+      _savedDrafts.isNotEmpty ||
+      _skippedCustomerIds.isNotEmpty ||
+      _hasUnsavedCurrentValue;
+
+  Future<void> _saveCurrentForResumeIfNeeded() async {
+    if (_customers.isEmpty) return;
+
+    final current = _customers[_currentIndex];
+    final raw = (_numpadValues[current.customerId] ?? '').trim();
+    final liters = double.tryParse(raw);
+    if (liters == null || liters <= 0) return;
+    if (!_editedCustomerIds.contains(current.customerId) &&
+        !_savedDrafts.containsKey(current.customerId)) {
+      return;
+    }
+
+    final existing = _savedDrafts[current.customerId];
+    if (existing != null && existing.liters == liters) return;
+
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final draft = await _deliveryRepo.upsertSessionDraft(
+      sessionId: _sessionId,
+      customerId: current.customerId,
+      date: today,
+      liters: liters,
+      pricePerLiter: current.priceOverride ?? _price,
+      deviceId: _deviceId,
+    );
+    _savedDrafts[current.customerId] = draft;
+    _editedCustomerIds.remove(current.customerId);
+  }
+
+  Future<void> _handleExitRequest() async {
+    if (_phase != _Phase.entry) return;
+    final l10n = AppLocalizations.of(context)!;
+
+    final shouldExit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final hasProgress = _hasSessionProgress;
+        return AlertDialog(
+          title: Text(l10n.deliveryExitTitle),
+          content: Text(
+            hasProgress
+                ? l10n.deliveryExitWithProgress
+                : l10n.deliveryExitWithoutProgress,
+          ),
+          actionsAlignment: MainAxisAlignment.start,
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(l10n.deliveryExitYes),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(l10n.btnCancel),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldExit != true) return;
+
+    if (_hasSessionProgress) {
+      await _saveCurrentForResumeIfNeeded();
+    }
+    if (mounted) {
+      if (_hasSessionProgress) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.deliveryProgressSaved),
+          ),
+        );
+      }
+      context.pop();
+    }
+  }
+
+  Future<void> _saveAndExit() async {
+    if (_phase != _Phase.entry) return;
+
+    if (_hasSessionProgress) {
+      await _saveCurrentForResumeIfNeeded();
+    }
+    if (!mounted) return;
+
+    if (_hasSessionProgress) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.deliveryProgressSaved),
+        ),
+      );
+    }
+    context.pop();
+  }
+
+  Future<void> _finishSessionEarly() async {
+    if (_phase != _Phase.entry) return;
+    final l10n = AppLocalizations.of(context)!;
+
+    await _saveCurrentForResumeIfNeeded();
+    if (_savedDrafts.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.deliveryNeedOneBeforeFinish),
+        ),
+      );
+      return;
+    }
+
+    final shouldFinish = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text(
-          'ترسیل چھوڑیں؟',
-          textDirection: TextDirection.rtl,
-        ),
+        title: Text(l10n.deliveryFinishNowTitle),
         content: Text(
-          '${_savedDrafts.length} گاہکوں کا ڈیٹا ضائع ہو جائے گا۔',
-          textDirection: TextDirection.rtl,
+          l10n.deliveryFinishNowBody,
         ),
         actionsAlignment: MainAxisAlignment.start,
         actions: [
           ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('جاری رکھیں', textDirection: TextDirection.rtl),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.deliveryFinishAction),
           ),
           TextButton(
-            style: TextButton.styleFrom(foregroundColor: kAlertRed),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('چھوڑیں', textDirection: TextDirection.rtl),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.btnCancel),
           ),
         ],
       ),
     );
 
-    if (result == true) await _deliveryRepo.abandonSession(_sessionId);
-    return result ?? false;
+    if (shouldFinish != true) return;
+    await _doSaveAll();
+  }
+
+  bool _isCurrentCustomerRecorded(Customer customer) =>
+      _savedDrafts.containsKey(customer.customerId);
+
+  bool _isCurrentCustomerSkipped(Customer customer) =>
+      _skippedCustomerIds.contains(customer.customerId);
+
+  bool _isCurrentCustomerPending(Customer customer) {
+    final raw = (_numpadValues[customer.customerId] ?? '').trim();
+    final liters = double.tryParse(raw);
+    return liters != null &&
+        liters > 0 &&
+        !_isCurrentCustomerRecorded(customer);
+  }
+
+  String _statusLabelFor(Customer customer) {
+    final l10n = AppLocalizations.of(context)!;
+    if (_isCurrentCustomerRecorded(customer))
+      return l10n.deliveryStatusRecorded;
+    if (_isCurrentCustomerSkipped(customer)) return l10n.deliveryStatusSkipped;
+    if (_isCurrentCustomerPending(customer)) return l10n.deliveryStatusReady;
+    return l10n.deliveryStatusNotRecorded;
+  }
+
+  Color _statusColorFor(Customer customer) {
+    if (_isCurrentCustomerRecorded(customer)) return kGreen;
+    if (_isCurrentCustomerSkipped(customer)) return kAmber;
+    if (_isCurrentCustomerPending(customer)) return kMittiBrown;
+    return kMutedGray;
+  }
+
+  IconData _statusIconFor(Customer customer) {
+    if (_isCurrentCustomerRecorded(customer)) return Icons.check_circle;
+    if (_isCurrentCustomerSkipped(customer)) return Icons.remove_circle_outline;
+    if (_isCurrentCustomerPending(customer)) return Icons.edit_note;
+    return Icons.radio_button_unchecked;
+  }
+
+  String _confirmLabelFor(Customer customer, bool isLast) {
+    final l10n = AppLocalizations.of(context)!;
+    if (_isCurrentCustomerRecorded(customer)) {
+      return isLast ? l10n.deliveryUpdateFinalEntry : l10n.deliveryUpdateEntry;
+    }
+    return isLast ? l10n.deliveryConfirmFinalEntry : l10n.deliveryConfirmEntry;
+  }
+
+  String _skipLabelFor(Customer customer) {
+    final l10n = AppLocalizations.of(context)!;
+    return _isCurrentCustomerSkipped(customer)
+        ? l10n.deliverySkippedLabel
+        : l10n.deliverySkipLabel;
+  }
+
+  String _clearLabelFor(Customer customer) {
+    final l10n = AppLocalizations.of(context)!;
+    return _isCurrentCustomerRecorded(customer)
+        ? l10n.deliveryClearRecordedEntry
+        : l10n.deliveryClearEntry;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -300,8 +598,8 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
   void _scrollAvatarTo(int index) {
     if (!_avatarScroll.hasClients) return;
     const itemWidth = 60.0; // avatar 40dp + padding + gap
-    final target = (index * itemWidth)
-        .clamp(0.0, _avatarScroll.position.maxScrollExtent);
+    final target =
+        (index * itemWidth).clamp(0.0, _avatarScroll.position.maxScrollExtent);
     _avatarScroll.animateTo(
       target,
       duration: const Duration(milliseconds: 200),
@@ -317,13 +615,14 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (isSuccess) { context.go('/home'); return; }
+        if (isSuccess) {
+          context.go('/home');
+          return;
+        }
         if (_phase == _Phase.entry) {
-          if (await _confirmDiscard()) {
-            if (mounted) context.pop();
-          }
+          await _handleExitRequest();
         }
       },
       child: Scaffold(
@@ -343,12 +642,29 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
                 ),
                 leading: IconButton(
                   icon: const Icon(Icons.close, color: kInkBlack),
-                  onPressed: () async {
-                    if (await _confirmDiscard()) {
-                      if (mounted) context.pop();
-                    }
-                  },
+                  onPressed: _handleExitRequest,
                 ),
+                actions: [
+                  IconButton(
+                    onPressed: _saveAndExit,
+                    tooltip:
+                        AppLocalizations.of(context)!.deliverySaveExitAction,
+                    icon: const Icon(Icons.save_alt, color: kGreen),
+                  ),
+                  TextButton.icon(
+                    onPressed:
+                        (_savedDrafts.isNotEmpty || _hasUnsavedCurrentValue)
+                            ? _finishSessionEarly
+                            : null,
+                    icon: const Icon(Icons.done_all, size: 18),
+                    label: Text(
+                        AppLocalizations.of(context)!.deliveryFinishAction),
+                    style: TextButton.styleFrom(
+                      foregroundColor: kGreen,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
               )
             : null,
         body: _buildBody(),
@@ -358,22 +674,27 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
 
   Widget _buildBody() {
     return switch (_phase) {
-      _Phase.loading || _Phase.recovery || _Phase.saving =>
-          const Center(child: CircularProgressIndicator(color: kGreen)),
-      _Phase.empty => _EmptyState(onAddCustomer: () => context.go('/customers/new')),
+      _Phase.loading ||
+      _Phase.recovery ||
+      _Phase.saving =>
+        const Center(child: CircularProgressIndicator(color: kGreen)),
+      _Phase.empty =>
+        _EmptyState(onAddCustomer: () => context.go('/customers/new')),
       _Phase.success => _SuccessScreen(
-          drafts: _savedDrafts.values.toList(),
+          drafts: _successDrafts,
           onDone: () => context.go('/home'),
-          onPayment: () => context.go('/payment/entry'),
+          onPayment: () {
+            context.push('/payment/entry', extra: _successPaymentCustomerId);
+          },
         ),
       _Phase.entry => _buildEntryBody(),
     };
   }
 
   Widget _buildEntryBody() {
-    final c       = _customers[_currentIndex];
+    final c = _customers[_currentIndex];
     final hasNext = _currentIndex < _customers.length - 1;
-    final isLast  = !hasNext;
+    final isLast = !hasNext;
 
     return Column(
       children: [
@@ -381,7 +702,9 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
           customers: _customers,
           currentIndex: _currentIndex,
           confirmedIds: _savedDrafts.keys.toSet(),
+          skippedIds: _skippedCustomerIds,
           scrollController: _avatarScroll,
+          onTapCustomer: _jumpToCustomer,
         ),
         const Divider(height: 1, color: kSurfaceGray),
         Expanded(
@@ -393,11 +716,26 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
                 customer: c,
                 numpadValue: _numpadValues[c.customerId] ?? '',
                 price: c.priceOverride ?? _price,
-                onNumpadChanged: (v) => setState(() => _numpadValues[c.customerId] = v),
-                onQtyChip: (q) => setState(() => _numpadValues[c.customerId] = _litersStr(q)),
+                statusLabel: _statusLabelFor(c),
+                statusColor: _statusColorFor(c),
+                statusIcon: _statusIconFor(c),
+                clearLabel: _clearLabelFor(c),
+                skipLabel: _skipLabelFor(c),
+                confirmLabel: _confirmLabelFor(c, isLast),
+                onNumpadChanged: (v) => setState(() {
+                  _numpadValues[c.customerId] = v;
+                  _skippedCustomerIds.remove(c.customerId);
+                  _editedCustomerIds.add(c.customerId);
+                }),
+                onQtyChip: (q) => setState(() {
+                  _numpadValues[c.customerId] = _litersStr(q);
+                  _skippedCustomerIds.remove(c.customerId);
+                  _editedCustomerIds.add(c.customerId);
+                }),
+                onClear: _clearCurrentEntry,
+                onSkip: _skipCurrent,
                 onConfirm: _confirmCurrent,
                 onPrevious: _currentIndex > 0 ? _goPrevious : null,
-                isLast: isLast,
               ),
               // Next card: Offstage — pre-renders widget tree without painting.
               // Triggers Noto Nastalikh font shaping (8–15 ms on Helio G25)
@@ -406,15 +744,29 @@ class _DeliveryEntryState extends ConsumerState<DeliveryEntryScreen> {
                 Offstage(
                   offstage: true,
                   child: _CustomerEntryCard(
-                    key: ValueKey('pre_${_customers[_currentIndex + 1].customerId}'),
+                    key: ValueKey(
+                        'pre_${_customers[_currentIndex + 1].customerId}'),
                     customer: _customers[_currentIndex + 1],
-                    numpadValue: _numpadValues[_customers[_currentIndex + 1].customerId] ?? '',
-                    price: _customers[_currentIndex + 1].priceOverride ?? _price,
+                    numpadValue: _numpadValues[
+                            _customers[_currentIndex + 1].customerId] ??
+                        '',
+                    price:
+                        _customers[_currentIndex + 1].priceOverride ?? _price,
+                    statusLabel: _statusLabelFor(_customers[_currentIndex + 1]),
+                    statusColor: _statusColorFor(_customers[_currentIndex + 1]),
+                    statusIcon: _statusIconFor(_customers[_currentIndex + 1]),
+                    clearLabel: _clearLabelFor(_customers[_currentIndex + 1]),
+                    skipLabel: _skipLabelFor(_customers[_currentIndex + 1]),
+                    confirmLabel: _confirmLabelFor(
+                      _customers[_currentIndex + 1],
+                      _currentIndex + 1 == _customers.length - 1,
+                    ),
                     onNumpadChanged: (_) {},
                     onQtyChip: (_) {},
+                    onClear: null,
+                    onSkip: null,
                     onConfirm: () {},
                     onPrevious: null,
-                    isLast: _currentIndex + 1 == _customers.length - 1,
                   ),
                 ),
             ],
@@ -431,13 +783,17 @@ class _AvatarStrip extends StatelessWidget {
   final List<Customer> customers;
   final int currentIndex;
   final Set<String> confirmedIds;
+  final Set<String> skippedIds;
   final ScrollController scrollController;
+  final ValueChanged<int> onTapCustomer;
 
   const _AvatarStrip({
     required this.customers,
     required this.currentIndex,
     required this.confirmedIds,
+    required this.skippedIds,
     required this.scrollController,
+    required this.onTapCustomer,
   });
 
   @override
@@ -450,42 +806,48 @@ class _AvatarStrip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         itemCount: customers.length,
         itemBuilder: (ctx, i) {
-          final c         = customers[i];
+          final c = customers[i];
           final isCurrent = i == currentIndex;
-          final isDone    = confirmedIds.contains(c.customerId);
-          final initial   = c.name.trim().isNotEmpty
-              ? c.name.trim()[0].toUpperCase()
-              : '?';
+          final isDone = confirmedIds.contains(c.customerId);
+          final isSkipped = skippedIds.contains(c.customerId);
+          final initial =
+              c.name.trim().isNotEmpty ? c.name.trim()[0].toUpperCase() : '?';
 
           return Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isCurrent
-                    ? kGreen
-                    : isDone
-                        ? kGreen.withOpacity(0.15)
-                        : kSurfaceGray,
-                border: isCurrent
-                    ? Border.all(color: kGreenDark, width: 2)
-                    : null,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => onTapCustomer(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isCurrent
+                      ? kGreen
+                      : isDone
+                          ? kGreen.withValues(alpha: 0.15)
+                          : kSurfaceGray,
+                  border: isCurrent
+                      ? Border.all(color: kGreenDark, width: 2)
+                      : null,
+                ),
+                child: isDone && !isCurrent
+                    ? const Icon(Icons.check, color: kGreen, size: 18)
+                    : isSkipped && !isCurrent
+                        ? const Icon(Icons.remove, color: kAmber, size: 18)
+                        : Center(
+                            child: Text(
+                              initial,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: isCurrent ? kWhite : kMittiBrown,
+                              ),
+                            ),
+                          ),
               ),
-              child: isDone && !isCurrent
-                  ? const Icon(Icons.check, color: kGreen, size: 18)
-                  : Center(
-                      child: Text(
-                        initial,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: isCurrent ? kWhite : kMittiBrown,
-                        ),
-                      ),
-                    ),
             ),
           );
         },
@@ -504,29 +866,44 @@ class _CustomerEntryCard extends StatelessWidget {
   final Customer customer;
   final String numpadValue;
   final double price;
+  final String statusLabel;
+  final Color statusColor;
+  final IconData statusIcon;
+  final String clearLabel;
+  final String skipLabel;
+  final String confirmLabel;
   final ValueChanged<String> onNumpadChanged;
   final ValueChanged<double> onQtyChip;
+  final VoidCallback? onClear;
+  final VoidCallback? onSkip;
   final VoidCallback onConfirm;
   final VoidCallback? onPrevious;
-  final bool isLast;
 
   const _CustomerEntryCard({
     super.key,
     required this.customer,
     required this.numpadValue,
     required this.price,
+    required this.statusLabel,
+    required this.statusColor,
+    required this.statusIcon,
+    required this.clearLabel,
+    required this.skipLabel,
+    required this.confirmLabel,
     required this.onNumpadChanged,
     required this.onQtyChip,
+    required this.onClear,
+    required this.onSkip,
     required this.onConfirm,
     required this.onPrevious,
-    required this.isLast,
   });
 
   double? get _liters => double.tryParse(numpadValue);
-  double get _total   => ((_liters ?? 0) * price * 100).round() / 100;
+  double get _total => ((_liters ?? 0) * price * 100).round() / 100;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       child: Column(
@@ -570,12 +947,37 @@ class _CustomerEntryCard extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: statusColor, width: 1.2),
+            ),
+            child: Row(
+              children: [
+                Icon(statusIcon, color: statusColor, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    statusLabel,
+                    style: kBodyStyle.copyWith(
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // ── Quantity chips ─────────────────────────────────────────────────
-          const Align(
+          Align(
             alignment: Alignment.centerRight,
             child: Text(
-              'مقدار (لیٹر)',
-              textDirection: TextDirection.rtl,
+              l10n.deliveryQuantityLabel,
               style: kLabelStyle,
             ),
           ),
@@ -603,7 +1005,9 @@ class _CustomerEntryCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  numpadValue.isEmpty ? '0 لیٹر' : '$numpadValue لیٹر',
+                  numpadValue.isEmpty
+                      ? l10n.deliveryLitersZero
+                      : l10n.deliveryLitersValue(numpadValue),
                   style: kTitleStyle.copyWith(
                     color: numpadValue.isEmpty ? kMutedGray : kInkBlack,
                   ),
@@ -617,7 +1021,7 @@ class _CustomerEntryCard extends StatelessWidget {
                         ),
                       )
                     : Text(
-                        '₹${price.toStringAsFixed(0)}/لیٹر',
+                        l10n.deliveryPricePerLiter(price.toStringAsFixed(0)),
                         style: kBodyStyle.copyWith(color: kMutedGray),
                       ),
               ],
@@ -629,6 +1033,38 @@ class _CustomerEntryCard extends StatelessWidget {
           NumpadWidget(value: numpadValue, onChanged: onNumpadChanged),
           const SizedBox(height: 16),
 
+          if (onClear != null) ...[
+            SizedBox(
+              height: kButtonHeight,
+              width: double.infinity,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kAlertRed,
+                  side: const BorderSide(color: kAlertRed, width: 1.2),
+                ),
+                onPressed: onClear,
+                child: Text(clearLabel),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          if (onSkip != null) ...[
+            SizedBox(
+              height: kButtonHeight,
+              width: double.infinity,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kAmber,
+                  side: const BorderSide(color: kAmber, width: 1.2),
+                ),
+                onPressed: onSkip,
+                child: Text(skipLabel),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
           // ── Confirm — kConfirmButtonHeight (72dp) ──────────────────────────
           SizedBox(
             height: kConfirmButtonHeight,
@@ -636,9 +1072,9 @@ class _CustomerEntryCard extends StatelessWidget {
             child: ElevatedButton(
               onPressed: onConfirm,
               child: Text(
-                isLast ? 'آخری تصدیق' : 'تصدیق کریں',
-                textDirection: TextDirection.rtl,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                confirmLabel,
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -651,10 +1087,7 @@ class _CustomerEntryCard extends StatelessWidget {
               width: double.infinity,
               child: OutlinedButton(
                 onPressed: onPrevious,
-                child: const Text(
-                  'پچھلا گاہک',
-                  textDirection: TextDirection.rtl,
-                ),
+                child: Text(l10n.previousCustomer),
               ),
             ),
           ],
@@ -672,22 +1105,20 @@ class _BalanceLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     if (balance > 0) {
       return Text(
-        'باقی: ₹${balance.toStringAsFixed(2)}',
-        textDirection: TextDirection.rtl,
+        l10n.balanceOwed(balance.toStringAsFixed(2)),
         style: kBodyStyle.copyWith(color: kAlertRed),
       );
     } else if (balance < 0) {
       return Text(
-        'اضافی: ₹${(-balance).toStringAsFixed(2)}',
-        textDirection: TextDirection.rtl,
+        l10n.deliveryAdvance((-balance).toStringAsFixed(2)),
         style: kBodyStyle.copyWith(color: kGreen),
       );
     }
     return Text(
-      'ادائیگی صاف',
-      textDirection: TextDirection.rtl,
+      l10n.balanceClear,
       style: kBodyStyle.copyWith(color: kGreen),
     );
   }
@@ -697,8 +1128,8 @@ class _BalanceLabel extends StatelessWidget {
 
 /// Session receipt screen — shown to the customer as proof of delivery.
 ///
-/// NEVER auto-dismisses. User must tap "ہو گیا" explicitly.
-/// "ادائیگی درج کریں" is the primary payment discovery mechanism.
+/// NEVER auto-dismisses. User must tap "Done" explicitly.
+/// "Record payment" is the primary payment discovery mechanism.
 class _SuccessScreen extends StatelessWidget {
   final List<Delivery> drafts;
   final VoidCallback onDone;
@@ -712,10 +1143,11 @@ class _SuccessScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final totalLiters = drafts.fold(0.0, (s, d) => s + d.liters);
-    final totalValue  = drafts.fold(0.0, (s, d) => s + d.totalValue);
-    final today       = DateTime.now();
-    final dateStr     = '${today.day}/${today.month}/${today.year}';
+    final totalValue = drafts.fold(0.0, (s, d) => s + d.totalValue);
+    final today = DateTime.now();
+    final dateStr = '${today.day}/${today.month}/${today.year}';
 
     return SafeArea(
       child: Padding(
@@ -728,11 +1160,10 @@ class _SuccessScreen extends StatelessWidget {
             const Icon(Icons.check_circle_outline, color: kWhite, size: 80),
             const SizedBox(height: 20),
 
-            const Text(
-              'تمام دودھ محفوظ',
+            Text(
+              l10n.successSaved,
               textAlign: TextAlign.center,
-              textDirection: TextDirection.rtl,
-              style: TextStyle(
+              style: const TextStyle(
                 color: kWhite,
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
@@ -754,17 +1185,18 @@ class _SuccessScreen extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  _SummaryRow(label: 'گاہک', value: '${drafts.length}'),
+                  _SummaryRow(label: l10n.customers, value: '${drafts.length}'),
                   const SizedBox(height: 14),
                   const Divider(color: kGreen, height: 1),
                   const SizedBox(height: 14),
                   _SummaryRow(
-                    label: 'کل دودھ',
-                    value: '${totalLiters.toStringAsFixed(1)} لیٹر',
+                    label: l10n.reportTotalLiters,
+                    value: l10n
+                        .deliveryLitersValue(totalLiters.toStringAsFixed(1)),
                   ),
                   const SizedBox(height: 14),
                   _SummaryRow(
-                    label: 'کل رقم',
+                    label: l10n.deliveryTotalValue,
                     value: '₹${totalValue.toStringAsFixed(2)}',
                   ),
                 ],
@@ -782,10 +1214,10 @@ class _SuccessScreen extends StatelessWidget {
                   side: const BorderSide(color: kWhite, width: 1.5),
                 ),
                 onPressed: onPayment,
-                child: const Text(
-                  'ادائیگی درج کریں',
-                  textDirection: TextDirection.rtl,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                child: Text(
+                  l10n.recordPayment,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -800,10 +1232,10 @@ class _SuccessScreen extends StatelessWidget {
                   foregroundColor: kGreen,
                 ),
                 onPressed: onDone,
-                child: const Text(
-                  'ہو گیا',
-                  textDirection: TextDirection.rtl,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                child: Text(
+                  l10n.btnDone,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -845,6 +1277,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -853,28 +1286,23 @@ class _EmptyState extends StatelessWidget {
           children: [
             const Icon(Icons.people_outline, size: 64, color: kMutedGray),
             const SizedBox(height: 16),
-            const Text(
-              'کوئی گاہک نہیں',
-              textDirection: TextDirection.rtl,
-              style: TextStyle(
+            Text(
+              l10n.noCustomersYet,
+              style: const TextStyle(
                 fontSize: 20,
                 color: kMittiBrown,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'پہلے گاہک شامل کریں',
-              textDirection: TextDirection.rtl,
+            Text(
+              l10n.addFirstCustomer,
               style: kBodyStyle,
             ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: onAddCustomer,
-              child: const Text(
-                'گاہک شامل کریں',
-                textDirection: TextDirection.rtl,
-              ),
+              child: Text(l10n.btnAddCustomer),
             ),
           ],
         ),

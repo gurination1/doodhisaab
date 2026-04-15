@@ -49,7 +49,12 @@ class MonthlySummary {
         totalCollected: 0,
       );
 
-  bool get hasData => totalLiters > 0 || totalExpenses > 0;
+  bool get hasData =>
+      totalLiters > 0 ||
+      totalExpenses > 0 ||
+      otherIncome > 0 ||
+      totalCollected > 0 ||
+      totalMilkRevenue > 0;
 
   @override
   String toString() =>

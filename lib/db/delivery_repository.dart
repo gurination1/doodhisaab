@@ -114,6 +114,21 @@ class DeliveryRepository {
     );
   }
 
+  /// Deletes one customer's draft from the active session.
+  ///
+  /// Used when the operator clears a mistaken milk entry before final save.
+  Future<void> deleteSessionDraftForCustomer(
+    String sessionId,
+    String customerId,
+  ) async {
+    final db = await DatabaseProvider.database;
+    await db.delete(
+      'deliveries',
+      where: "session_id = ? AND customer_id = ? AND status = 'session_draft'",
+      whereArgs: [sessionId, customerId],
+    );
+  }
+
   /// All session_draft records for a given session, ordered by entry time.
   Future<List<Delivery>> getSessionDrafts(String sessionId) async {
     final db = await DatabaseProvider.database;

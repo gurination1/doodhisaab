@@ -10,12 +10,12 @@ import 'db_provider.dart';
 // Known keys in app_settings table.
 //
 //   device_id         — persistent UUID, generated once on first launch
-//   language          — 'en' | 'pa' | 'hi' | 'ur'  (default: 'en')
+//   language          — 'en' | 'hi' | 'pa'  (default: 'en')
 //   app_version       — last recorded app version string
 //   first_launch_done — '1' once onboarding wizard is completed
 //   pin_hash          — SHA-256 of PIN string  (Step 17)
 //   outdoor_mode      — '1' | '0'              (Step 24)
-//   theme_mode        — 'system' | 'light' | 'dark'
+//   theme_mode        — 'system' | 'light'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _kDeviceId        = 'device_id';
@@ -68,12 +68,16 @@ class SettingsRepository {
   // ── LANGUAGE ───────────────────────────────────────────────────────────────
 
   Future<String> getLanguage() async {
-    return (await _get(_kLanguage)) ?? 'en';
+    final language = await _get(_kLanguage);
+    if (language == null || !['en', 'hi', 'pa'].contains(language)) {
+      return 'en';
+    }
+    return language;
   }
 
   Future<void> setLanguage(String languageCode) async {
     assert(
-      ['en', 'pa', 'hi', 'ur'].contains(languageCode),
+      ['en', 'hi', 'pa'].contains(languageCode),
       'Unknown language code: $languageCode',
     );
     await _set(_kLanguage, languageCode);
@@ -107,7 +111,7 @@ class SettingsRepository {
 
   /// Hashes [plainPin] with SHA-256 and stores the hex digest.
   ///
-  /// Called from the "PIN لگائیں / تبدیل کریں" flow in [SettingsScreen].
+  /// Called from the PIN setup / change flow in [SettingsScreen].
   Future<void> setPinHash(String plainPin) async {
     final digest = sha256.convert(utf8.encode(plainPin));
     await _set(_kPinHash, digest.toString());
@@ -131,7 +135,7 @@ class SettingsRepository {
 
   Future<String> getThemeMode() async {
     final mode = await _get(_kThemeMode);
-    if (mode == null || !['system', 'light', 'dark'].contains(mode)) {
+    if (mode == null || !['system', 'light'].contains(mode)) {
       return 'system';
     }
     return mode;
@@ -139,7 +143,7 @@ class SettingsRepository {
 
   Future<void> setThemeMode(String mode) async {
     assert(
-      ['system', 'light', 'dark'].contains(mode),
+      ['system', 'light'].contains(mode),
       'Unknown theme mode: $mode',
     );
     await _set(_kThemeMode, mode);

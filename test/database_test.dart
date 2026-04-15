@@ -1,18 +1,25 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:doodhisaab/db/db_provider.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   setUpAll(() {
     // Use in-memory SQLite for tests — no Android emulator needed.
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    DatabaseProvider.dbNameOverrideForTesting = 'doodhisaab_database_test.db';
   });
 
   setUp(() async {
     // Reset singleton between tests — required.
     // Without this, tests share the same DB instance and interfere.
     await DatabaseProvider.closeAndReset();
+    final path = p.join(
+      await getDatabasesPath(),
+      DatabaseProvider.dbNameOverrideForTesting ?? kDbName,
+    );
+    await deleteDatabase(path);
   });
 
   group('DatabaseProvider', () {

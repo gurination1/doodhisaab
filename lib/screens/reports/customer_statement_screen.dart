@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart' as intl;
 
+import '../../core/services/analytics_service.dart';
 import '../../db/customer_repository.dart';
 import '../../db/statement_repository.dart';
 import '../../models/customer.dart';
@@ -28,16 +32,10 @@ class CustomerStatementScreen extends StatefulWidget {
       _CustomerStatementScreenState();
 }
 
-class _CustomerStatementScreenState
-    extends State<CustomerStatementScreen> {
+class _CustomerStatementScreenState extends State<CustomerStatementScreen> {
   late int _year;
   late int _month;
   Customer? _customer;
-
-  static const _urduMonths = [
-    'جنوری', 'فروری', 'مارچ', 'اپریل', 'مئی', 'جون',
-    'جولائی', 'اگست', 'ستمبر', 'اکتوبر', 'نومبر', 'دسمبر',
-  ];
 
   @override
   void initState() {
@@ -46,6 +44,14 @@ class _CustomerStatementScreenState
     _year = now.year;
     _month = now.month;
     _loadCustomer();
+    unawaited(
+      AnalyticsService.instance.trackFeatureUsed(
+        featureName: 'customer_statement_view',
+        screenName: 'Customer Statement',
+        routeName: '/reports/statement/${widget.customerId}',
+        customerId: widget.customerId,
+      ),
+    );
   }
 
   Future<void> _loadCustomer() async {
@@ -59,6 +65,13 @@ class _CustomerStatementScreenState
   }
 
   void _prevMonth() {
+    AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'view_previous_month',
+      screenName: 'Customer Statement',
+      routeName: '/reports/statement/${widget.customerId}',
+      elementType: 'icon_button',
+      elementText: 'Previous Month',
+    );
     setState(() {
       if (_month == 1) {
         _month = 12;
@@ -71,6 +84,13 @@ class _CustomerStatementScreenState
 
   void _nextMonth() {
     if (_isCurrentMonth) return;
+    AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'view_next_month',
+      screenName: 'Customer Statement',
+      routeName: '/reports/statement/${widget.customerId}',
+      elementType: 'icon_button',
+      elementText: 'Next Month',
+    );
     setState(() {
       if (_month == 12) {
         _month = 1;
@@ -90,15 +110,23 @@ class _CustomerStatementScreenState
       appBar: AppBar(
         backgroundColor: kGreen,
         foregroundColor: kWhite,
-        title: Text(customerName, textDirection: TextDirection.rtl),
+        title: Text(customerName),
         actions: [
           // Payment shortcut — navigate to payment entry pre-selecting this customer
           if (_customer != null)
             IconButton(
               icon: const Icon(Icons.payments_outlined),
-              tooltip: 'ادائیگی',
-              onPressed: () =>
-                  context.push('/payment/entry', extra: widget.customerId),
+              tooltip: 'Payment',
+              onPressed: () {
+                AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'record_payment',
+                  screenName: 'Customer Statement',
+                  routeName: '/reports/statement/${widget.customerId}',
+                  elementType: 'icon_button',
+                  elementText: 'Payment',
+                );
+                context.push('/payment/entry', extra: widget.customerId);
+              },
             ),
         ],
       ),
@@ -117,8 +145,7 @@ class _CustomerStatementScreenState
                   onPressed: _isCurrentMonth ? null : _nextMonth,
                 ),
                 Text(
-                  '${_urduMonths[_month - 1]} $_year',
-                  textDirection: TextDirection.rtl,
+                  intl.DateFormat('MMMM yyyy').format(DateTime(_year, _month)),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -136,8 +163,7 @@ class _CustomerStatementScreenState
           // Statement content
           Expanded(
             child: FutureBuilder<CustomerStatement>(
-              key: ValueKey(
-                  'stmt-${widget.customerId}-$_year-$_month'),
+              key: ValueKey('stmt-${widget.customerId}-$_year-$_month'),
               future: StatementRepository()
                   .getCustomerStatement(widget.customerId, _year, _month),
               builder: (context, snap) {
@@ -147,10 +173,8 @@ class _CustomerStatementScreenState
                 if (snap.hasError) {
                   return Center(
                     child: Text(
-                      'خرابی: ${snap.error}',
-                      textDirection: TextDirection.rtl,
-                      style:
-                          const TextStyle(color: kAlertRed, fontSize: 14),
+                      'Error: ${snap.error}',
+                      style: const TextStyle(color: kAlertRed, fontSize: 14),
                     ),
                   );
                 }
@@ -172,8 +196,7 @@ class _StatementContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isEmpty =
-        statement.deliveries.isEmpty && statement.payments.isEmpty;
+    final isEmpty = statement.deliveries.isEmpty && statement.payments.isEmpty;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -184,16 +207,14 @@ class _StatementContent extends StatelessWidget {
 
         // Deliveries list
         if (statement.deliveries.isNotEmpty) ...[
-          _SectionHeader(
-              label: 'ترسیل (${statement.deliveries.length})'),
+          _SectionHeader(label: 'Deliveries (${statement.deliveries.length})'),
           ...statement.deliveries.map((d) => _DeliveryRow(d)),
           const SizedBox(height: 16),
         ],
 
         // Payments list
         if (statement.payments.isNotEmpty) ...[
-          _SectionHeader(
-              label: 'ادائیگی (${statement.payments.length})'),
+          _SectionHeader(label: 'Payments (${statement.payments.length})'),
           ...statement.payments.map((p) => _PaymentRow(p)),
           const SizedBox(height: 16),
         ],
@@ -204,10 +225,8 @@ class _StatementContent extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.only(top: 32),
               child: Text(
-                'اس مہینے کا کوئی ریکارڈ نہیں',
-                textDirection: TextDirection.rtl,
-                style:
-                    const TextStyle(color: kMutedGray, fontSize: 16),
+                'No records for this month',
+                style: const TextStyle(color: kMutedGray, fontSize: 16),
               ),
             ),
           ),
@@ -228,14 +247,13 @@ class _SummaryCard extends StatelessWidget {
     final String balanceLabel;
     if (statement.isSettled) {
       balanceColor = kGreen;
-      balanceLabel = 'ادائیگی صاف';
+      balanceLabel = 'Settled';
     } else if (statement.hasBalance) {
       balanceColor = kAlertRed;
-      balanceLabel = '₹${statement.balance.toStringAsFixed(0)} باقی';
+      balanceLabel = 'Due: ₹${statement.balance.toStringAsFixed(0)}';
     } else {
       balanceColor = kGreen;
-      balanceLabel =
-          '₹${statement.balance.abs().toStringAsFixed(0)} ایڈوانس';
+      balanceLabel = 'Advance: ₹${statement.balance.abs().toStringAsFixed(0)}';
     }
 
     return Container(
@@ -247,22 +265,20 @@ class _SummaryCard extends StatelessWidget {
       child: Column(
         children: [
           _SummaryRow(
-              label: 'کل لیٹر',
+              label: 'Total Liters',
               value: '${statement.totalLiters.toStringAsFixed(1)} L'),
           _SummaryRow(
-              label: 'کل قیمت',
+              label: 'Total Value',
               value: '₹${statement.totalValue.toStringAsFixed(0)}'),
           _SummaryRow(
-              label: 'ادا شدہ',
+              label: 'Paid',
               value: '₹${statement.totalPaid.toStringAsFixed(0)}'),
           const Divider(height: 16),
           Row(
-            textDirection: TextDirection.rtl,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'بیلنس',
-                textDirection: TextDirection.rtl,
+                'Balance',
                 style: TextStyle(
                     color: kInkBlack,
                     fontWeight: FontWeight.w600,
@@ -270,7 +286,6 @@ class _SummaryCard extends StatelessWidget {
               ),
               Text(
                 balanceLabel,
-                textDirection: TextDirection.rtl,
                 style: TextStyle(
                     color: balanceColor,
                     fontWeight: FontWeight.bold,
@@ -293,15 +308,11 @@ class _SummaryRow extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
         child: Row(
-          textDirection: TextDirection.rtl,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label,
-                textDirection: TextDirection.rtl,
-                style:
-                    const TextStyle(color: kMutedGray, fontSize: 14)),
+                style: const TextStyle(color: kMutedGray, fontSize: 14)),
             Text(value,
-                textDirection: TextDirection.rtl,
                 style: const TextStyle(
                     color: kInkBlack,
                     fontSize: 14,
@@ -322,11 +333,8 @@ class _SectionHeader extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 8),
         child: Text(
           label,
-          textDirection: TextDirection.rtl,
           style: const TextStyle(
-              color: kMittiBrown,
-              fontWeight: FontWeight.w600,
-              fontSize: 15),
+              color: kMittiBrown, fontWeight: FontWeight.w600, fontSize: 15),
         ),
       );
 }
@@ -346,34 +354,25 @@ class _DeliveryRow extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
-      padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: kWhite,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
-        textDirection: TextDirection.rtl,
         children: [
-          Text(date,
-              textDirection: TextDirection.rtl,
-              style:
-                  const TextStyle(color: kMutedGray, fontSize: 13)),
+          Text(date, style: const TextStyle(color: kMutedGray, fontSize: 13)),
           const Spacer(),
           Text(
             '${delivery.liters.toStringAsFixed(1)} L',
-            textDirection: TextDirection.rtl,
-            style:
-                const TextStyle(color: kInkBlack, fontSize: 14),
+            style: const TextStyle(color: kInkBlack, fontSize: 14),
           ),
           const SizedBox(width: 16),
           Text(
             '₹${delivery.totalValue.toStringAsFixed(0)}',
             textDirection: TextDirection.rtl,
             style: const TextStyle(
-                color: kGreen,
-                fontWeight: FontWeight.w600,
-                fontSize: 14),
+                color: kGreen, fontWeight: FontWeight.w600, fontSize: 14),
           ),
         ],
       ),
@@ -395,19 +394,14 @@ class _PaymentRow extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
-      padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: kWhite,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
-        textDirection: TextDirection.rtl,
         children: [
-          Text(date,
-              textDirection: TextDirection.rtl,
-              style:
-                  const TextStyle(color: kMutedGray, fontSize: 13)),
+          Text(date, style: const TextStyle(color: kMutedGray, fontSize: 13)),
           const Spacer(),
           if (payment.note != null && payment.note!.isNotEmpty)
             Flexible(
@@ -415,9 +409,7 @@ class _PaymentRow extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Text(
                   payment.note!,
-                  textDirection: TextDirection.rtl,
-                  style: const TextStyle(
-                      color: kMutedGray, fontSize: 12),
+                  style: const TextStyle(color: kMutedGray, fontSize: 12),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -426,9 +418,7 @@ class _PaymentRow extends StatelessWidget {
             '₹${payment.amount.toStringAsFixed(0)}',
             textDirection: TextDirection.rtl,
             style: const TextStyle(
-                color: kMittiBrown,
-                fontWeight: FontWeight.w600,
-                fontSize: 14),
+                color: kMittiBrown, fontWeight: FontWeight.w600, fontSize: 14),
           ),
         ],
       ),
@@ -446,8 +436,7 @@ class _StatementSkeleton extends StatelessWidget {
         height: height,
         margin: const EdgeInsets.symmetric(vertical: 5),
         decoration: BoxDecoration(
-            color: kSurfaceGray,
-            borderRadius: BorderRadius.circular(4)),
+            color: kSurfaceGray, borderRadius: BorderRadius.circular(4)),
       );
 
   @override
@@ -460,8 +449,7 @@ class _StatementSkeleton extends StatelessWidget {
             Container(
               height: 120,
               decoration: BoxDecoration(
-                  color: kSurfaceGray,
-                  borderRadius: BorderRadius.circular(12)),
+                  color: kSurfaceGray, borderRadius: BorderRadius.circular(12)),
             ),
             const SizedBox(height: 24),
             _box(100, 14),

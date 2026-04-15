@@ -1,0 +1,12 @@
+{
+  "hi": [
+    "settingsPrivacyTerms",
+    "settingsPrivacyTermsSubtitle",
+    "privacySimpleTitle",
+    "privacySimpleBody",
+    "privacyDataTitle",
+    "privacyDataBody",
+    "privacyAnalyticsTitle",
+    "privacyAnalyticsBody"
+  ]
+}

@@ -5,7 +5,7 @@ import '../theme/app_theme.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // PlaceholderScreen
 //
-// Shows a simple AppBar + centered "آنے والا" (Coming Soon) message.
+// Shows a simple AppBar + centered "Coming Soon" message.
 // Used for routes that are declared in the router (so taps don't crash) but
 // whose real screen has not been built yet in this step.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,7 +24,6 @@ class PlaceholderScreen extends StatelessWidget {
         leading: const BackButton(color: kInkBlack),
         title: Text(
           title,
-          textDirection: TextDirection.rtl,
           style: const TextStyle(
             color: kInkBlack,
             fontSize: 18,
@@ -34,8 +33,7 @@ class PlaceholderScreen extends StatelessWidget {
       ),
       body: const Center(
         child: Text(
-          'آنے والا',
-          textDirection: TextDirection.rtl,
+          'Coming Soon',
           style: TextStyle(color: kMutedGray, fontSize: 20),
         ),
       ),

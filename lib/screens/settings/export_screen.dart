@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:path/path.dart' as p;
 
+import '../../core/services/analytics_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../../services/csv_export_service.dart';
 import '../../services/share_service.dart';
 import '../../theme/app_theme.dart';
@@ -28,15 +30,15 @@ class ExportScreen extends StatefulWidget {
 class _ExportScreenState extends State<ExportScreen> {
   late DateTime _from;
   late DateTime _to;
-  bool   _exporting = false;
-  File?  _lastFile;
+  bool _exporting = false;
+  File? _lastFile;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _from = DateTime(now.year, now.month, 1);
-    _to   = DateTime(now.year, now.month, now.day);
+    _to = DateTime(now.year, now.month, now.day);
   }
 
   // ── Date pickers ─────────────────────────────────────────────────────────────
@@ -51,7 +53,7 @@ class _ExportScreenState extends State<ExportScreen> {
     );
     if (picked != null && mounted) {
       setState(() {
-        _from     = picked;
+        _from = picked;
         _lastFile = null;
       });
     }
@@ -67,7 +69,7 @@ class _ExportScreenState extends State<ExportScreen> {
     );
     if (picked != null && mounted) {
       setState(() {
-        _to       = picked;
+        _to = picked;
         _lastFile = null;
       });
     }
@@ -77,7 +79,7 @@ class _ExportScreenState extends State<ExportScreen> {
     return Theme(
       data: Theme.of(ctx).copyWith(
         colorScheme: const ColorScheme.light(
-          primary:   kGreen,
+          primary: kGreen,
           onPrimary: kWhite,
           onSurface: kInkBlack,
         ),
@@ -89,22 +91,32 @@ class _ExportScreenState extends State<ExportScreen> {
   // ── Export ────────────────────────────────────────────────────────────────────
 
   Future<void> _exportAndShare() async {
+    final l10n = AppLocalizations.of(context)!;
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'export_csv',
+      screenName: 'Export',
+      routeName: '/settings/export',
+      elementType: 'button',
+      elementText: 'Export CSV',
+    );
     setState(() {
       _exporting = true;
-      _lastFile  = null;
+      _lastFile = null;
     });
     try {
       final file = await CsvExportService.exportAll(from: _from, to: _to);
       if (mounted) setState(() => _lastFile = file);
+      await AnalyticsService.instance.trackFeatureUsed(
+        featureName: 'backup_export',
+        screenName: 'Export',
+        routeName: '/settings/export',
+      );
       await ShareService.shareFile(file);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'برآمد ناکام ہوا',
-              textDirection: TextDirection.rtl,
-            ),
+            content: Text(l10n.exportFailed),
             backgroundColor: kAlertRed,
             behavior: SnackBarBehavior.floating,
           ),
@@ -119,6 +131,7 @@ class _ExportScreenState extends State<ExportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final fmt = intl.DateFormat('dd MMM yyyy');
 
     return Scaffold(
@@ -128,9 +141,8 @@ class _ExportScreenState extends State<ExportScreen> {
         elevation: 0,
         leading: const BackButton(color: kInkBlack),
         centerTitle: true,
-        title: const Text(
-          'CSV برآمد',
-          textDirection: TextDirection.rtl,
+        title: Text(
+          l10n.exportTitle,
           style: TextStyle(
             color: kInkBlack,
             fontSize: 18,
@@ -143,13 +155,11 @@ class _ExportScreenState extends State<ExportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-
             // ── Date range section ───────────────────────────────────────────
             Align(
               alignment: Alignment.centerRight,
               child: Text(
-                'تاریخ کی حد',
-                textDirection: TextDirection.rtl,
+                l10n.exportDateRange,
                 style: kLabelStyle.copyWith(
                   color: kMittiBrown,
                   fontWeight: FontWeight.w700,
@@ -160,11 +170,10 @@ class _ExportScreenState extends State<ExportScreen> {
             const SizedBox(height: 10),
 
             Row(
-              textDirection: TextDirection.rtl,
               children: [
                 Expanded(
                   child: _DateTile(
-                    label: 'سے',
+                    label: l10n.exportFrom,
                     value: fmt.format(_from),
                     onTap: _exporting ? null : _pickFrom,
                   ),
@@ -172,7 +181,7 @@ class _ExportScreenState extends State<ExportScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _DateTile(
-                    label: 'تک',
+                    label: l10n.exportTo,
                     value: fmt.format(_to),
                     onTap: _exporting ? null : _pickTo,
                   ),
@@ -193,30 +202,27 @@ class _ExportScreenState extends State<ExportScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    'فائل میں شامل ہوگا:',
-                    textDirection: TextDirection.rtl,
+                    l10n.exportIncludes,
                     style: kLabelStyle.copyWith(
                       color: kInkBlack,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  for (final item in const [
-                    'ڈیلیوری (تصدیق شدہ)',
-                    'ادائیگیاں',
-                    'اخراجات',
-                    'دیگر آمدنی',
+                  for (final item in [
+                    l10n.exportIncludesDeliveries,
+                    l10n.exportIncludesPayments,
+                    l10n.exportIncludesExpenses,
+                    l10n.exportIncludesOtherIncome,
                   ])
                     Padding(
                       padding: const EdgeInsets.only(top: 3),
                       child: Row(
-                        textDirection: TextDirection.rtl,
                         children: [
                           const Icon(Icons.check, size: 14, color: kGreen),
                           const SizedBox(width: 6),
                           Text(
                             item,
-                            textDirection: TextDirection.rtl,
                             style: kLabelStyle.copyWith(color: kMutedGray),
                           ),
                         ],
@@ -275,7 +281,6 @@ class _ExportScreenState extends State<ExportScreen> {
                 onPressed: _exporting ? null : _exportAndShare,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  textDirection: TextDirection.rtl,
                   children: [
                     if (_exporting)
                       const SizedBox(
@@ -287,12 +292,12 @@ class _ExportScreenState extends State<ExportScreen> {
                         ),
                       )
                     else
-                      const Icon(Icons.file_download,
-                          size: 24, color: kWhite),
+                      const Icon(Icons.file_download, size: 24, color: kWhite),
                     const SizedBox(width: 10),
                     Text(
-                      _exporting ? 'بنایا جا رہا ہے...' : 'CSV بنائیں اور شیئر کریں',
-                      textDirection: TextDirection.rtl,
+                      _exporting
+                          ? l10n.exportPreparing
+                          : l10n.exportCreateShare,
                       style: kBodyStyle.copyWith(
                         color: _exporting ? kMutedGray : kWhite,
                         fontWeight: FontWeight.w600,
@@ -308,8 +313,7 @@ class _ExportScreenState extends State<ExportScreen> {
 
             Center(
               child: Text(
-                'فائل Downloads/DoodHisaab/ میں بھی محفوظ ہوگی',
-                textDirection: TextDirection.rtl,
+                l10n.exportSavedNotice,
                 style: kLabelStyle.copyWith(color: kMutedGray),
                 textAlign: TextAlign.center,
               ),
@@ -327,8 +331,8 @@ class _ExportScreenState extends State<ExportScreen> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DateTile extends StatelessWidget {
-  final String       label;
-  final String       value;
+  final String label;
+  final String value;
   final VoidCallback? onTap;
 
   const _DateTile({
@@ -354,7 +358,6 @@ class _DateTile extends StatelessWidget {
             children: [
               Text(
                 label,
-                textDirection: TextDirection.rtl,
                 style: kLabelStyle.copyWith(color: kMittiBrown),
               ),
               const SizedBox(height: 2),

@@ -3,19 +3,23 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/settings_repository.dart';
+import '../../l10n/app_localizations.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_exit_guard.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SettingsScreen
 //
 // Sections:
-//   زبان      — اردو / انگریزی / پنجابی                    (Step 21)
-//   ڈسپلے    — آؤٹ ڈور موڈ                               (Step 21 — wired)
-//   قیمت      — دودھ کی قیمت → /settings/price           (Step 14)
-//   سیکیورٹی  — PIN لگائیں / تبدیل کریں + PIN ہٹائیں   (Step 17)
-//   ڈیٹا     — بیک اپ + CSV برآمد + ڈیٹا کی حفاظت      (Steps 18/20/23)
+//   Language  — English / Hindi / Punjabi                 (Step 21)
+//   Display   — theme mode                                (Step 21 — wired)
+//   Pricing   — milk price + calculator                  (Step 14)
+//   Security  — set / change / remove PIN                (Step 17)
+//   Data      — backup + CSV export + data safety        (Steps 18/20/23)
+//   Help      — tutorial + privacy rules                 (Step 27)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -63,6 +67,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // ── PIN MANAGEMENT ─────────────────────────────────────────────────────────
 
   Future<void> _showSetPinSheet(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -79,7 +84,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  _pinHash != null ? 'PIN changed' : 'PIN set',
+                  _pinHash != null ? l10n.pinChanged : l10n.pinSet,
                 ),
                 backgroundColor: kGreen,
                 duration: const Duration(seconds: 2),
@@ -93,27 +98,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _confirmRemovePin(BuildContext context) async {
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: kCream,
-        title: const Text(
-          'Remove PIN?',
-          style: TextStyle(color: kInkBlack, fontSize: 17),
+        title: Text(
+          l10n.removePinTitle,
+          style: const TextStyle(color: kInkBlack, fontSize: 17),
         ),
-        content: const Text(
-          'The app will open without a PIN after removal.',
-          style: TextStyle(color: kMutedGray, fontSize: 14),
+        content: Text(
+          l10n.removePinBody,
+          style: const TextStyle(color: kMutedGray, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: kMutedGray)),
+            child:
+                Text(l10n.btnCancel, style: const TextStyle(color: kMutedGray)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Remove',
-                style: TextStyle(color: kAlertRed, fontWeight: FontWeight.w600)),
+            child: Text(l10n.removeAction,
+                style: const TextStyle(
+                    color: kAlertRed, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -124,10 +132,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await _loadPinStatus();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'PIN removed',
-            ),
+          SnackBar(
+            content: Text(l10n.pinRemoved),
             duration: Duration(seconds: 2),
             behavior: SnackBarBehavior.floating,
           ),
@@ -139,7 +145,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // ── DATA WARNING INFO ──────────────────────────────────────────────────────
   //
   // Same content as the onboarding first-launch dialog, but accessible
-  // at any time via Settings → ڈیٹا → ڈیٹا کی حفاظت.
+  // at any time via Settings → Data → Data safety.
   // barrierDismissible: true here (user chose to open it, can dismiss freely).
 
   void _showDataWarningInfo(BuildContext context) {
@@ -147,22 +153,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Keep your data safe',
+        title: Text(
+          AppLocalizations.of(ctx)!.dataWarningTitle,
         ),
-        content: const Text(
-          'All your data is stored on this phone.\n\n'
-          'If the phone is lost or damaged, your data can be lost.\n\n'
-          'A weekly backup is saved automatically in the Downloads folder.\n'
-          'You can also create a backup right now from Settings.',
+        content: Text(
+          AppLocalizations.of(ctx)!.dataWarningBody,
         ),
         actionsAlignment: MainAxisAlignment.start,
         actions: [
           TextButton(
             style: TextButton.styleFrom(foregroundColor: kGreen),
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text(
-              'Got it',
+            child: Text(
+              AppLocalizations.of(ctx)!.dataWarningOk,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
@@ -175,108 +178,195 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentLang  = ref.watch(languageProvider).valueOrNull ?? 'en';
-    final currentThemeMode = ref.watch(themeModeProvider).valueOrNull ?? 'system';
+    final l10n = AppLocalizations.of(context)!;
+    final currentLang = ref.watch(languageProvider).valueOrNull ?? 'en';
+    final currentThemeMode =
+        ref.watch(themeModeProvider).valueOrNull ?? 'system';
 
-    return Scaffold(
-      backgroundColor: kCream,
-      appBar: AppBar(
+    return AppExitGuard(
+      child: Scaffold(
         backgroundColor: kCream,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            color: kInkBlack,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kInkBlack),
-          onPressed: () {
-            if (Navigator.of(context).canPop()) {
-              context.pop();
-            } else {
-              context.go('/home');
-            }
-          },
-        ),
-      ),
-      body: ListView(
-        children: [
-          // ── Language ─────────────────────────────────────────────────────
-          _SectionHeader(label: 'Language'),
-          _LanguageSelector(
-            currentCode: currentLang,
-            onSelect: _changeLanguage,
-          ),
-
-          // ── Display ──────────────────────────────────────────────────────
-          _SectionHeader(label: 'Theme'),
-          _ThemeSelector(
-            currentMode: currentThemeMode,
-            onSelect: _changeThemeMode,
-          ),
-
-          // ── Pricing ──────────────────────────────────────────────────────
-          _SectionHeader(label: 'Pricing'),
-          _SettingsTile(
-            icon: Icons.monetization_on,
-            label: 'Milk Price',
-            subtitle: 'View current price and history',
-            onTap: () => context.push('/settings/price'),
-          ),
-
-          // ── Security ─────────────────────────────────────────────────────
-          _SectionHeader(label: 'Security'),
-          if (!_pinLoaded)
-            // Skeleton row while loading PIN status.
-            const SizedBox(height: kListRowHeight),
-          if (_pinLoaded) ...[
-            _SettingsTile(
-              icon: Icons.lock_outline,
-              label: _pinHash == null ? 'Set PIN' : 'Change PIN',
-              subtitle: _pinHash == null
-                  ? 'Protect the app with a PIN'
-                  : 'Set a new 4-digit PIN',
-              onTap: () => _showSetPinSheet(context),
+        appBar: AppBar(
+          backgroundColor: kCream,
+          elevation: 0,
+          centerTitle: true,
+          title: Text(
+            l10n.settingsTitle,
+            style: TextStyle(
+              color: kInkBlack,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
             ),
-            if (_pinHash != null)
-              _SettingsTile(
-                icon: Icons.lock_open,
-                label: 'Remove PIN',
-                subtitle: 'App will open without a PIN',
-                danger: true,
-                onTap: () => _confirmRemovePin(context),
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: kInkBlack),
+            onPressed: () {
+              if (Navigator.of(context).canPop()) {
+                context.pop();
+              } else {
+                context.go('/home');
+              }
+            },
+          ),
+        ),
+        body: ListView(
+          children: [
+            // ── Language ─────────────────────────────────────────────────────
+            _SectionHeader(label: l10n.settingsLanguage),
+            _LanguageSelector(
+              currentCode: currentLang,
+              onSelect: _changeLanguage,
+            ),
+
+            // ── Display ──────────────────────────────────────────────────────
+            _SectionHeader(label: l10n.settingsTheme),
+            _ThemeSelector(
+              currentMode: currentThemeMode,
+              onSelect: _changeThemeMode,
+              labels: (
+                system: l10n.themeSystem,
+                light: l10n.themeLight,
               ),
+            ),
+
+            // ── Pricing ──────────────────────────────────────────────────────
+            _SectionHeader(label: l10n.settingsPricing),
+            _SettingsTile(
+              icon: Icons.monetization_on,
+              label: l10n.settingsMilkPrice,
+              subtitle: l10n.settingsMilkPriceSubtitle,
+              onTap: () {
+                AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'change_price',
+                  screenName: 'Settings',
+                  routeName: '/settings',
+                  elementType: 'tile',
+                  elementText: l10n.settingsMilkPrice,
+                );
+                context.push('/settings/price');
+              },
+            ),
+            _SettingsTile(
+              icon: Icons.calculate_outlined,
+              label: l10n.settingsCalculator,
+              subtitle: l10n.settingsCalculatorSubtitle,
+              onTap: () {
+                AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'open_calculator',
+                  screenName: 'Settings',
+                  routeName: '/settings',
+                  elementType: 'tile',
+                  elementText: l10n.settingsCalculator,
+                );
+                context.push('/settings/calculator');
+              },
+            ),
+
+            // ── Security ─────────────────────────────────────────────────────
+            _SectionHeader(label: l10n.settingsSecurity),
+            if (!_pinLoaded)
+              // Skeleton row while loading PIN status.
+              const SizedBox(height: kListRowHeight),
+            if (_pinLoaded) ...[
+              _SettingsTile(
+                icon: Icons.lock_outline,
+                label: _pinHash == null
+                    ? l10n.settingsSetPin
+                    : l10n.settingsChangePin,
+                subtitle: _pinHash == null
+                    ? l10n.settingsSetPinSubtitle
+                    : l10n.settingsChangePinSubtitle,
+                onTap: () => _showSetPinSheet(context),
+              ),
+              if (_pinHash != null)
+                _SettingsTile(
+                  icon: Icons.lock_open,
+                  label: l10n.settingsRemovePin,
+                  subtitle: l10n.settingsRemovePinSubtitle,
+                  danger: true,
+                  onTap: () => _confirmRemovePin(context),
+                ),
+            ],
+
+            // ── Data ─────────────────────────────────────────────────────────
+            _SectionHeader(label: l10n.settingsData),
+            _SettingsTile(
+              icon: Icons.backup,
+              label: l10n.settingsBackup,
+              subtitle: l10n.settingsBackupSubtitle,
+              onTap: () {
+                AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'backup_now',
+                  screenName: 'Settings',
+                  routeName: '/settings',
+                  elementType: 'tile',
+                  elementText: l10n.settingsBackup,
+                );
+                context.push('/settings/backup');
+              },
+            ),
+            _SettingsTile(
+              icon: Icons.file_download,
+              label: l10n.settingsExportCsv,
+              subtitle: l10n.settingsExportCsvSubtitle,
+              onTap: () {
+                AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'export_csv',
+                  screenName: 'Settings',
+                  routeName: '/settings',
+                  elementType: 'tile',
+                  elementText: l10n.settingsExportCsv,
+                );
+                context.push('/settings/export');
+              },
+            ),
+            _SettingsTile(
+              icon: Icons.privacy_tip_outlined,
+              label: l10n.settingsPrivacyTerms,
+              subtitle: l10n.settingsPrivacyTermsSubtitle,
+              onTap: () => context.push('/privacy'),
+            ),
+            _SectionHeader(label: l10n.settingsHelp),
+            _SettingsTile(
+              icon: Icons.play_circle_outline,
+              label: l10n.settingsTutorial,
+              subtitle: l10n.settingsTutorialSubtitle,
+              onTap: () {
+                AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'open_tutorial',
+                  screenName: 'Settings',
+                  routeName: '/settings',
+                  elementType: 'tile',
+                  elementText: l10n.settingsTutorial,
+                );
+                context.push('/tutorial');
+              },
+            ),
+            // Step 23 — data safety info tile.
+            // Same content as first-launch dialog, accessible at any time.
+            _SettingsTile(
+              icon: Icons.info_outline,
+              label: l10n.settingsDataSafety,
+              subtitle: l10n.settingsDataSafetySubtitle,
+              onTap: () {
+                AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'open_data_safety',
+                  screenName: 'Settings',
+                  routeName: '/settings',
+                  elementType: 'tile',
+                  elementText: l10n.settingsDataSafety,
+                );
+                AnalyticsService.instance.trackFeatureUsed(
+                  featureName: 'data_safety_opened',
+                  screenName: 'Settings',
+                  routeName: '/settings',
+                );
+                _showDataWarningInfo(context);
+              },
+            ),
+            const SizedBox(height: 32),
           ],
-
-          // ── Data ─────────────────────────────────────────────────────────
-          _SectionHeader(label: 'Data'),
-          _SettingsTile(
-            icon: Icons.backup,
-            label: 'Backup',
-            subtitle: 'Save into Downloads/DoodHisaab/',
-            onTap: () => context.push('/settings/backup'),
-          ),
-          _SettingsTile(
-            icon: Icons.file_download,
-            label: 'Export CSV',
-            subtitle: 'Create a spreadsheet-friendly file',
-            onTap: () => context.push('/settings/export'),
-          ),
-          // Step 23 — data safety info tile.
-          // Same content as first-launch dialog, accessible at any time.
-          _SettingsTile(
-            icon: Icons.info_outline,
-            label: 'Data Safety',
-            subtitle: 'What happens if the phone is lost or damaged?',
-            onTap: () => _showDataWarningInfo(context),
-          ),
-
-          const SizedBox(height: 32),
-        ],
+        ),
       ),
     );
   }
@@ -286,9 +376,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 // _SetPinSheet — modal bottom sheet for setting / changing PIN.
 //
 // Two-step flow:
-//   Step 1 — "نیا PIN"    → enter 4 digits → auto-advance
-//   Step 2 — "تصدیق کریں" → enter same 4 → match → save → close sheet
-//   Mismatch → shake dots + "PIN مختلف ہے" text + restart step 2
+//   Step 1 — enter a new PIN → 4 digits → auto-advance
+//   Step 2 — confirm PIN     → same 4 digits → match → save → close sheet
+//   Mismatch → shake dots + error text + restart step 2
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SetPinSheet extends StatefulWidget {
@@ -324,12 +414,11 @@ class _SetPinSheetState extends State<_SetPinSheet>
           tween: Tween(begin: Offset.zero, end: const Offset(0.05, 0)),
           weight: 1),
       TweenSequenceItem(
-          tween: Tween(
-              begin: const Offset(0.05, 0), end: const Offset(-0.05, 0)),
+          tween:
+              Tween(begin: const Offset(0.05, 0), end: const Offset(-0.05, 0)),
           weight: 2),
       TweenSequenceItem(
-          tween:
-              Tween(begin: const Offset(-0.05, 0), end: Offset.zero),
+          tween: Tween(begin: const Offset(-0.05, 0), end: Offset.zero),
           weight: 1),
     ]).animate(CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeInOut));
   }
@@ -381,7 +470,7 @@ class _SetPinSheetState extends State<_SetPinSheet>
           if (mounted) {
             setState(() {
               _input = '';
-              _errorMsg = 'PIN مختلف ہے — دوبارہ کوشش کریں';
+              _errorMsg = 'PINs do not match. Try again.';
             });
           }
         });
@@ -392,8 +481,8 @@ class _SetPinSheetState extends State<_SetPinSheet>
   @override
   Widget build(BuildContext context) {
     final title = _step == 1
-        ? (widget.isChanging ? 'نیا PIN درج کریں' : 'PIN لگائیں')
-        : 'PIN تصدیق کریں';
+        ? (widget.isChanging ? 'Enter new PIN' : 'Set PIN')
+        : 'Confirm PIN';
 
     return Padding(
       padding: EdgeInsets.only(
@@ -420,7 +509,6 @@ class _SetPinSheetState extends State<_SetPinSheet>
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
               title,
-              textDirection: TextDirection.rtl,
               style: kBodyStyle.copyWith(
                 fontSize: 17,
                 fontWeight: FontWeight.w600,
@@ -462,7 +550,6 @@ class _SetPinSheetState extends State<_SetPinSheet>
                   const SizedBox(height: 8),
                   Text(
                     _errorMsg!,
-                    textDirection: TextDirection.rtl,
                     style: kLabelStyle.copyWith(color: kAlertRed),
                   ),
                 ],
@@ -576,7 +663,7 @@ class _SheetPinNumpad extends StatelessWidget {
 
 // ─── Language selector ────────────────────────────────────────────────────────
 //
-// Four segmented buttons (English / Punjabi / Hindi / Urdu).
+// Language selector for the supported in-app locale.
 // Tapping a button writes to SettingsRepository and invalidates languageProvider
 // in app.dart — locale changes without app restart.
 
@@ -591,9 +678,8 @@ class _LanguageSelector extends StatelessWidget {
 
   static const _langs = [
     ('en', 'English'),
-    ('hi', 'हिंदी'),
+    ('hi', 'हिन्दी'),
     ('pa', 'ਪੰਜਾਬੀ'),
-    ('ur', 'اردو'),
   ];
 
   @override
@@ -620,7 +706,10 @@ class _LanguageSelector extends StatelessWidget {
                   color: selected ? kGreen : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: selected
-                      ? [BoxShadow(color: kGreen.withOpacity(0.25), blurRadius: 6)]
+                      ? [
+                          BoxShadow(
+                              color: kGreen.withOpacity(0.25), blurRadius: 6)
+                        ]
                       : null,
                 ),
                 child: Center(
@@ -629,8 +718,7 @@ class _LanguageSelector extends StatelessWidget {
                     style: kBodyStyle.copyWith(
                       color: selected ? kWhite : kMutedGray,
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                      fontSize: code == 'ur' ? 16 : 14,
-                      fontFamily: code == 'ur' ? 'NotoNastaliqUrdu' : null,
+                      fontSize: 14,
                     ),
                   ),
                 ),
@@ -646,20 +734,20 @@ class _LanguageSelector extends StatelessWidget {
 class _ThemeSelector extends StatelessWidget {
   final String currentMode;
   final Future<void> Function(String mode) onSelect;
+  final ({String system, String light}) labels;
 
   const _ThemeSelector({
     required this.currentMode,
     required this.onSelect,
+    required this.labels,
   });
-
-  static const _modes = [
-    ('system', 'System'),
-    ('light', 'Light'),
-    ('dark', 'Dark'),
-  ];
 
   @override
   Widget build(BuildContext context) {
+    final modes = [
+      ('system', labels.system),
+      ('light', labels.light),
+    ];
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       decoration: BoxDecoration(
@@ -667,7 +755,7 @@ class _ThemeSelector extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
-        children: _modes.map((entry) {
+        children: modes.map((entry) {
           final (mode, label) = entry;
           final selected = mode == currentMode;
           return Expanded(
@@ -681,7 +769,10 @@ class _ThemeSelector extends StatelessWidget {
                   color: selected ? kGreen : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: selected
-                      ? [BoxShadow(color: kGreen.withOpacity(0.25), blurRadius: 6)]
+                      ? [
+                          BoxShadow(
+                              color: kGreen.withOpacity(0.25), blurRadius: 6)
+                        ]
                       : null,
                 ),
                 child: Center(
@@ -734,18 +825,16 @@ class _ToggleTile extends StatelessWidget {
             ),
           ),
           child: Row(
-            textDirection: TextDirection.rtl,
             children: [
               Icon(icon, color: kGreen, size: 24),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       label,
-                      textDirection: TextDirection.rtl,
                       style: kBodyStyle.copyWith(
                         fontWeight: FontWeight.w500,
                         color: kInkBlack,
@@ -755,7 +844,6 @@ class _ToggleTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         subtitle!,
-                        textDirection: TextDirection.rtl,
                         style: kBodyStyle.copyWith(
                           fontSize: 13,
                           color: kMutedGray,
@@ -791,7 +879,6 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
       child: Text(
         label,
-        textDirection: TextDirection.rtl,
         style: kLabelStyle.copyWith(
           color: kMittiBrown,
           fontWeight: FontWeight.w700,
@@ -822,7 +909,7 @@ class _SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final labelColor = danger ? kAlertRed : kInkBlack;
-    final iconColor  = danger ? kAlertRed : kGreen;
+    final iconColor = danger ? kAlertRed : kGreen;
 
     return Material(
       color: kCream,
@@ -837,18 +924,16 @@ class _SettingsTile extends StatelessWidget {
             ),
           ),
           child: Row(
-            textDirection: TextDirection.rtl,
             children: [
               Icon(icon, color: iconColor, size: 24),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       label,
-                      textDirection: TextDirection.rtl,
                       style: kBodyStyle.copyWith(
                         fontWeight: FontWeight.w500,
                         color: labelColor,
@@ -858,7 +943,6 @@ class _SettingsTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         subtitle!,
-                        textDirection: TextDirection.rtl,
                         style: kBodyStyle.copyWith(
                           fontSize: 13,
                           color: kMutedGray,
@@ -869,7 +953,7 @@ class _SettingsTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.chevron_left, color: kMutedGray, size: 20),
+              const Icon(Icons.chevron_right, color: kMutedGray, size: 20),
             ],
           ),
         ),

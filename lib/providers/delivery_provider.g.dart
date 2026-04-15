@@ -81,7 +81,7 @@ class _SystemHash {
 /// final statAsync = ref.watch(customerStatementProvider(customerId, year, month));
 /// return statAsync.when(
 ///   loading: () => const _Skeleton(),
-///   error:   (e, _) => Center(child: Text('خرابی: $e')),
+///   error:   (e, _) => Center(child: Text('Error: $e')),
 ///   data:    (statement) => _StatementView(statement),
 /// );
 /// ```
@@ -100,7 +100,7 @@ const customerStatementProvider = CustomerStatementFamily();
 /// final statAsync = ref.watch(customerStatementProvider(customerId, year, month));
 /// return statAsync.when(
 ///   loading: () => const _Skeleton(),
-///   error:   (e, _) => Center(child: Text('خرابی: $e')),
+///   error:   (e, _) => Center(child: Text('Error: $e')),
 ///   data:    (statement) => _StatementView(statement),
 /// );
 /// ```
@@ -117,7 +117,7 @@ class CustomerStatementFamily extends Family<AsyncValue<CustomerStatement>> {
   /// final statAsync = ref.watch(customerStatementProvider(customerId, year, month));
   /// return statAsync.when(
   ///   loading: () => const _Skeleton(),
-  ///   error:   (e, _) => Center(child: Text('خرابی: $e')),
+  ///   error:   (e, _) => Center(child: Text('Error: $e')),
   ///   data:    (statement) => _StatementView(statement),
   /// );
   /// ```
@@ -135,7 +135,7 @@ class CustomerStatementFamily extends Family<AsyncValue<CustomerStatement>> {
   /// final statAsync = ref.watch(customerStatementProvider(customerId, year, month));
   /// return statAsync.when(
   ///   loading: () => const _Skeleton(),
-  ///   error:   (e, _) => Center(child: Text('خرابی: $e')),
+  ///   error:   (e, _) => Center(child: Text('Error: $e')),
   ///   data:    (statement) => _StatementView(statement),
   /// );
   /// ```
@@ -189,7 +189,7 @@ class CustomerStatementFamily extends Family<AsyncValue<CustomerStatement>> {
 /// final statAsync = ref.watch(customerStatementProvider(customerId, year, month));
 /// return statAsync.when(
 ///   loading: () => const _Skeleton(),
-///   error:   (e, _) => Center(child: Text('خرابی: $e')),
+///   error:   (e, _) => Center(child: Text('Error: $e')),
 ///   data:    (statement) => _StatementView(statement),
 /// );
 /// ```
@@ -207,7 +207,7 @@ class CustomerStatementProvider
   /// final statAsync = ref.watch(customerStatementProvider(customerId, year, month));
   /// return statAsync.when(
   ///   loading: () => const _Skeleton(),
-  ///   error:   (e, _) => Center(child: Text('خرابی: $e')),
+  ///   error:   (e, _) => Center(child: Text('Error: $e')),
   ///   data:    (statement) => _StatementView(statement),
   /// );
   /// ```

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/price_repository.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/price_history.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/numpad.dart';
@@ -60,25 +62,32 @@ class _PriceSettingsScreenState extends State<PriceSettingsScreen> {
   // ── Init ────────────────────────────────────────────────────────────────────
 
   Future<void> _load() async {
-    final row   = await _priceRepo.getCurrentPriceRow();
+    final row = await _priceRepo.getCurrentPriceRow();
     final stale = await _priceRepo.isPriceStale(days: 30);
-    final hist  = _priceRepo.getHistory();
+    final hist = _priceRepo.getHistory();
     if (!mounted) return;
     setState(() {
-      _currentRow    = row;
-      _isStale       = stale;
+      _currentRow = row;
+      _isStale = stale;
       _historyFuture = hist;
-      _loading       = false;
+      _loading = false;
     });
   }
 
   // ── Save ────────────────────────────────────────────────────────────────────
 
   Future<void> _doSave() async {
+    if (_saving) return;
     final amount = double.tryParse(_numpadValue);
     if (amount == null || amount <= 0) return;
-
     setState(() => _saving = true);
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'change_price',
+      screenName: 'Price Settings',
+      routeName: '/settings/price',
+      elementType: 'button',
+      elementText: 'Save Price',
+    );
     HapticFeedback.selectionClick();
 
     final note = _noteController.text.trim().isEmpty
@@ -88,25 +97,28 @@ class _PriceSettingsScreenState extends State<PriceSettingsScreen> {
     await _priceRepo.setPrice(amount, note: note);
 
     // Reload current price card + history + stale check
-    final row   = await _priceRepo.getCurrentPriceRow();
+    final row = await _priceRepo.getCurrentPriceRow();
     final stale = await _priceRepo.isPriceStale(days: 30);
     if (!mounted) return;
 
     setState(() {
-      _currentRow    = row;
-      _isStale       = stale;
+      _currentRow = row;
+      _isStale = stale;
       _historyFuture = _priceRepo.getHistory();
-      _numpadValue   = '';
-      _saving        = false;
+      _numpadValue = '';
+      _saving = false;
     });
     _noteController.clear();
+    await AnalyticsService.instance.trackFeatureUsed(
+      featureName: 'price_update',
+      screenName: 'Price Settings',
+      routeName: '/settings/price',
+      amount: amount,
+    );
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'قیمت محفوظ ہو گئی',
-          textDirection: TextDirection.rtl,
-        ),
+      SnackBar(
+        content: Text(AppLocalizations.of(context)!.priceSaved),
         backgroundColor: kGreen,
         duration: Duration(seconds: 2),
       ),
@@ -133,15 +145,15 @@ class _PriceSettingsScreenState extends State<PriceSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: kCream,
       appBar: AppBar(
         backgroundColor: kCream,
         elevation: 0,
         centerTitle: true,
-        title: const Text(
-          'دودھ کی قیمت',
-          textDirection: TextDirection.rtl,
+        title: Text(
+          l10n.priceSettingsTitle,
           style: TextStyle(
             color: kInkBlack,
             fontSize: 18,
@@ -161,19 +173,15 @@ class _PriceSettingsScreenState extends State<PriceSettingsScreen> {
                     children: [
                       // ── Current price card ──────────────────────────────────
                       _CurrentPriceCard(
-                        row:     _currentRow,
+                        row: _currentRow,
                         isStale: _isStale,
                       ),
                       const SizedBox(height: 24),
 
                       // ── Set new price section ───────────────────────────────
-                      const Align(
+                      Align(
                         alignment: Alignment.centerRight,
-                        child: Text(
-                          'نئی قیمت درج کریں (روپے / لیٹر)',
-                          textDirection: TextDirection.rtl,
-                          style: kLabelStyle,
-                        ),
+                        child: Text(l10n.newPriceLabel, style: kLabelStyle),
                       ),
                       const SizedBox(height: 8),
 
@@ -189,13 +197,9 @@ class _PriceSettingsScreenState extends State<PriceSettingsScreen> {
                       const SizedBox(height: 20),
 
                       // Note — system keyboard (text, not number)
-                      const Align(
+                      Align(
                         alignment: Alignment.centerRight,
-                        child: Text(
-                          'نوٹ (اختیاری)',
-                          textDirection: TextDirection.rtl,
-                          style: kLabelStyle,
-                        ),
+                        child: Text(l10n.optionalNoteLabel, style: kLabelStyle),
                       ),
                       const SizedBox(height: 8),
                       _NoteField(controller: _noteController),
@@ -215,8 +219,7 @@ class _PriceSettingsScreenState extends State<PriceSettingsScreen> {
                             ),
                           ),
                           child: Text(
-                            'محفوظ کریں',
-                            textDirection: TextDirection.rtl,
+                            l10n.btnSave,
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -231,13 +234,10 @@ class _PriceSettingsScreenState extends State<PriceSettingsScreen> {
                       const SizedBox(height: 16),
 
                       // ── Price history list ──────────────────────────────────
-                      const Align(
+                      Align(
                         alignment: Alignment.centerRight,
-                        child: Text(
-                          'قیمت کی تاریخ',
-                          textDirection: TextDirection.rtl,
-                          style: kHeadlineStyle,
-                        ),
+                        child:
+                            Text(l10n.priceHistoryTitle, style: kHeadlineStyle),
                       ),
                       const SizedBox(height: 12),
 
@@ -254,12 +254,11 @@ class _PriceSettingsScreenState extends State<PriceSettingsScreen> {
                           }
                           final history = snap.data ?? [];
                           if (history.isEmpty) {
-                            return const Padding(
+                            return Padding(
                               padding: EdgeInsets.symmetric(vertical: 32),
                               child: Center(
                                 child: Text(
-                                  'کوئی قیمت نہیں',
-                                  textDirection: TextDirection.rtl,
+                                  l10n.noPriceYet,
                                   style: TextStyle(
                                     color: kMutedGray,
                                     fontSize: 16,
@@ -303,6 +302,7 @@ class _CurrentPriceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -314,18 +314,13 @@ class _CurrentPriceCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           // Label
-          const Text(
-            'موجودہ قیمت',
-            textDirection: TextDirection.rtl,
-            style: kLabelStyle,
-          ),
+          Text(l10n.currentPriceLabel, style: kLabelStyle),
           const SizedBox(height: 8),
 
           // Large price display
           if (row != null) ...[
             Text(
-              '₹${row!.pricePerLiter.toStringAsFixed(2)} / لیٹر',
-              textDirection: TextDirection.rtl,
+              l10n.pricePerLiterValue(row!.pricePerLiter.toStringAsFixed(2)),
               style: const TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
@@ -334,14 +329,12 @@ class _CurrentPriceCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'تاریخ: ${_formatDate(row!.effectiveFrom)}',
-              textDirection: TextDirection.rtl,
+              l10n.priceDateLabel(_formatDate(row!.effectiveFrom)),
               style: kBodyStyle.copyWith(color: kMutedGray),
             ),
           ] else ...[
-            const Text(
-              'قیمت مقرر نہیں',
-              textDirection: TextDirection.rtl,
+            Text(
+              l10n.noPriceSet,
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w500,
@@ -360,15 +353,14 @@ class _CurrentPriceCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: kAmber, width: 1),
               ),
-              child: const Row(
+              child: Row(
                 textDirection: TextDirection.rtl,
                 children: [
                   Icon(Icons.warning_amber, color: kAmber, size: 18),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'قیمت 30 دن سے زیادہ پرانی ہے',
-                      textDirection: TextDirection.rtl,
+                      l10n.priceStaleWarning,
                       style: TextStyle(
                         color: kAmber,
                         fontSize: 14,
@@ -396,6 +388,7 @@ class _PriceDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final hasValue = numpadValue.isNotEmpty &&
         double.tryParse(numpadValue) != null &&
         double.parse(numpadValue) > 0;
@@ -414,8 +407,9 @@ class _PriceDisplay extends StatelessWidget {
       child: Align(
         alignment: Alignment.centerRight,
         child: Text(
-          numpadValue.isEmpty ? '0 روپے / لیٹر' : '₹$numpadValue / لیٹر',
-          textDirection: TextDirection.rtl,
+          numpadValue.isEmpty
+              ? l10n.pricePerLiterValue('0')
+              : l10n.pricePerLiterValue(numpadValue),
           style: kTitleStyle.copyWith(
             color: numpadValue.isEmpty ? kMutedGray : kInkBlack,
           ),
@@ -433,21 +427,22 @@ class _NoteField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SizedBox(
       height: kInputHeight,
       child: TextField(
-        controller:    controller,
-        maxLines:      1,
-        textAlign:     TextAlign.right,
-        textDirection: TextDirection.rtl,
+        controller: controller,
+        maxLines: 1,
+        textAlign: TextAlign.start,
+        textDirection: Directionality.of(context),
         style: const TextStyle(fontSize: 16, color: kInkBlack),
         decoration: InputDecoration(
-          hintText:          'مثال: نئے سیزن کی قیمت',
-          hintStyle:         const TextStyle(color: kMutedGray, fontSize: 16),
-          hintTextDirection: TextDirection.rtl,
-          filled:            true,
-          fillColor:         kWhite,
-          contentPadding:    const EdgeInsets.symmetric(horizontal: 16),
+          hintText: l10n.noteExamplePrice,
+          hintStyle: const TextStyle(color: kMutedGray, fontSize: 16),
+          hintTextDirection: Directionality.of(context),
+          filled: true,
+          fillColor: kWhite,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: kMutedGray),
@@ -480,6 +475,7 @@ class _HistoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SizedBox(
       height: kListRowHeight,
       child: Padding(
@@ -494,8 +490,9 @@ class _HistoryRow extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    '₹${entry.pricePerLiter.toStringAsFixed(2)} / لیٹر',
-                    textDirection: TextDirection.rtl,
+                    l10n.pricePerLiterValue(
+                      entry.pricePerLiter.toStringAsFixed(2),
+                    ),
                     style: kBodyStyle.copyWith(
                       fontWeight: FontWeight.w600,
                       color: kInkBlack,

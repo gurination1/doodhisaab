@@ -1,15 +1,22 @@
-import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart' as intl;
+
+import '../../core/services/analytics_service.dart';
 import '../../db/customer_repository.dart';
-import '../../db/statement_repository.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/customer.dart';
 import '../../models/monthly_summary.dart';
+import '../../providers/delivery_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_exit_guard.dart';
 
 /// Reports screen — two tabs:
-///  Tab 0 "گاہک بیانات"  — active customers with cached balance; tap → statement detail
-///  Tab 1 "نفع نقصان"    — monthly P&L summary with month picker
+///  Tab 0 "Customer Statements" — active customers with cached balance; tap → statement detail
+///  Tab 1 "Profit & Loss"       — monthly P&L summary with month picker
 ///
 /// ⚠️  Architecture: ALL DB calls run inside FutureBuilder on the MAIN ISOLATE.
 /// sqflite's MethodChannel is bound to the main isolate.
@@ -18,14 +25,14 @@ import '../../theme/app_theme.dart';
 /// Performance (Step 24):
 ///  - Customer list uses ListView.builder + itemExtent: kListRowHeight.
 ///  - _CustomerBalanceTile draws its own bottom border — no separatorBuilder.
-class ReportsScreen extends StatefulWidget {
+class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
 
   @override
-  State<ReportsScreen> createState() => _ReportsScreenState();
+  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportsScreenState extends State<ReportsScreen>
+class _ReportsScreenState extends ConsumerState<ReportsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
@@ -33,40 +40,76 @@ class _ReportsScreenState extends State<ReportsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    unawaited(
+      AnalyticsService.instance.trackFeatureUsed(
+        featureName: 'reports_view',
+        screenName: 'Reports',
+        routeName: '/reports',
+      ),
+    );
+    _tabController.addListener(_handleTabChanged);
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChanged);
     _tabController.dispose();
     super.dispose();
   }
 
+  void _handleTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    final tabLabel = _tabController.index == 0 ? 'Statements' : 'Profit & Loss';
+    AnalyticsService.instance.trackButtonClicked(
+      buttonName: _tabController.index == 0
+          ? 'open_customer_statements_tab'
+          : 'open_profit_loss_tab',
+      screenName: 'Reports',
+      routeName: '/reports',
+      elementType: 'tab',
+      elementText: tabLabel,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kCream,
-      appBar: AppBar(
-        backgroundColor: kGreen,
-        foregroundColor: kWhite,
-        title: const Text('Reports'),
-        bottom: TabBar(
+    final l10n = AppLocalizations.of(context)!;
+    return AppExitGuard(
+      child: Scaffold(
+        backgroundColor: kCream,
+        appBar: AppBar(
+          backgroundColor: kGreen,
+          foregroundColor: kWhite,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              if (Navigator.of(context).canPop()) {
+                context.pop();
+              } else {
+                context.go('/home');
+              }
+            },
+          ),
+          title: Text(l10n.navReports),
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: kWhite,
+            labelColor: kWhite,
+            // ignore: deprecated_member_use
+            unselectedLabelColor: kWhite.withOpacity(0.65),
+            tabs: [
+              Tab(text: l10n.reportTabStatements),
+              Tab(text: l10n.reportTabPL),
+            ],
+          ),
+        ),
+        body: TabBarView(
           controller: _tabController,
-          indicatorColor: kWhite,
-          labelColor: kWhite,
-          // ignore: deprecated_member_use
-          unselectedLabelColor: kWhite.withOpacity(0.65),
-          tabs: const [
-            Tab(text: 'Statements'),
-            Tab(text: 'Profit & Loss'),
+          children: const [
+            _StatementsTab(),
+            _ProfitLossTab(),
           ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          _StatementsTab(),
-          _ProfitLossTab(),
-        ],
       ),
     );
   }
@@ -140,8 +183,16 @@ class _CustomerBalanceTile extends StatelessWidget {
     return Material(
       color: kCream,
       child: InkWell(
-        onTap: () =>
-            context.push('/reports/statement/${customer.customerId}'),
+        onTap: () {
+          AnalyticsService.instance.trackButtonClicked(
+            buttonName: 'open_customer_statement',
+            screenName: 'Reports',
+            routeName: '/reports',
+            elementType: 'row',
+            elementText: customer.name,
+          );
+          context.push('/reports/statement/${customer.customerId}');
+        },
         child: Container(
           height: kListRowHeight,
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -196,21 +247,16 @@ class _CustomerBalanceTile extends StatelessWidget {
 
 // ─── P&L Tab ──────────────────────────────────────────────────────────────────
 
-class _ProfitLossTab extends StatefulWidget {
+class _ProfitLossTab extends ConsumerStatefulWidget {
   const _ProfitLossTab();
 
   @override
-  State<_ProfitLossTab> createState() => _ProfitLossTabState();
+  ConsumerState<_ProfitLossTab> createState() => _ProfitLossTabState();
 }
 
-class _ProfitLossTabState extends State<_ProfitLossTab> {
+class _ProfitLossTabState extends ConsumerState<_ProfitLossTab> {
   late int _year;
   late int _month;
-
-  static const _urduMonths = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
 
   @override
   void initState() {
@@ -226,6 +272,13 @@ class _ProfitLossTabState extends State<_ProfitLossTab> {
   }
 
   void _prevMonth() {
+    AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'view_previous_month',
+      screenName: 'Reports',
+      routeName: '/reports',
+      elementType: 'icon_button',
+      elementText: 'Previous Month',
+    );
     setState(() {
       if (_month == 1) {
         _month = 12;
@@ -238,6 +291,13 @@ class _ProfitLossTabState extends State<_ProfitLossTab> {
 
   void _nextMonth() {
     if (_isCurrentMonth) return;
+    AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'view_next_month',
+      screenName: 'Reports',
+      routeName: '/reports',
+      elementType: 'icon_button',
+      elementText: 'Next Month',
+    );
     setState(() {
       if (_month == 12) {
         _month = 1;
@@ -250,6 +310,8 @@ class _ProfitLossTabState extends State<_ProfitLossTab> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final summaryAsync = ref.watch(monthlySummaryProvider(_year, _month));
     return Column(
       children: [
         // Month picker bar
@@ -266,8 +328,9 @@ class _ProfitLossTabState extends State<_ProfitLossTab> {
                 onPressed: _isCurrentMonth ? null : _nextMonth,
               ),
               Text(
-                '${_urduMonths[_month - 1]} $_year',
-                textDirection: TextDirection.rtl,
+                intl.DateFormat.yMMMM(l10n.localeName).format(
+                  DateTime(_year, _month),
+                ),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -285,25 +348,15 @@ class _ProfitLossTabState extends State<_ProfitLossTab> {
         ),
         // P&L data
         Expanded(
-          child: FutureBuilder<MonthlySummary>(
-            // ValueKey forces a fresh Future when month or year changes
-            key: ValueKey('pl-$_year-$_month'),
-            future: StatementRepository().getMonthlySummary(_year, _month),
-            builder: (context, snap) {
-              if (snap.connectionState != ConnectionState.done) {
-                return const _PLSkeleton();
-              }
-              if (snap.hasError) {
-                return Center(
-                  child: Text(
-                    'Error: ${snap.error}',
-                    textDirection: TextDirection.rtl,
-                    style: const TextStyle(color: kAlertRed, fontSize: 14),
-                  ),
-                );
-              }
-              return _PLContent(summary: snap.data!);
-            },
+          child: summaryAsync.when(
+            loading: () => const _PLSkeleton(),
+            error: (error, _) => Center(
+              child: Text(
+                'Error: $error',
+                style: const TextStyle(color: kAlertRed, fontSize: 14),
+              ),
+            ),
+            data: (summary) => _PLContent(summary: summary, l10n: l10n),
           ),
         ),
       ],
@@ -315,7 +368,8 @@ class _ProfitLossTabState extends State<_ProfitLossTab> {
 
 class _PLContent extends StatelessWidget {
   final MonthlySummary summary;
-  const _PLContent({required this.summary});
+  final AppLocalizations l10n;
+  const _PLContent({required this.summary, required this.l10n});
 
   @override
   Widget build(BuildContext context) {
@@ -335,10 +389,9 @@ class _PLContent extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text(
-                'Net Profit',
-                textDirection: TextDirection.rtl,
-                style: TextStyle(color: kMutedGray, fontSize: 14),
+              Text(
+                l10n.reportGrossProfitTitle,
+                style: const TextStyle(color: kMutedGray, fontSize: 14),
               ),
               const SizedBox(height: 6),
               Text(
@@ -350,12 +403,21 @@ class _PLContent extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              const SizedBox(height: 6),
+              Text(
+                l10n.reportGrossProfitFormula,
+                style: const TextStyle(color: kMutedGray, fontSize: 12),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                l10n.reportCollectionsNote,
+                style: const TextStyle(color: kMutedGray, fontSize: 12),
+              ),
               if (!summary.hasData)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    'No records for this month',
-                    textDirection: TextDirection.rtl,
+                    l10n.reportNoRecordsMonth,
                     style: const TextStyle(color: kMutedGray, fontSize: 13),
                   ),
                 ),
@@ -366,37 +428,44 @@ class _PLContent extends StatelessWidget {
 
         // Income
         _PLSectionHeader(
-            label: 'Income', icon: Icons.trending_up, color: kGreen),
+          label: l10n.reportIncomeSection,
+          icon: Icons.trending_up,
+          color: kGreen,
+        ),
         _PLRow(
-            label: 'Milk Revenue',
+            label: l10n.reportMilkRevenue,
             value: '₹${summary.totalMilkRevenue.toStringAsFixed(0)}',
             valueColor: kGreen),
         _PLRow(
-            label: 'Total Liters',
+            label: l10n.reportTotalLiters,
             value: '${summary.totalLiters.toStringAsFixed(1)} L'),
         _PLRow(
-            label: 'Other Income',
+            label: l10n.reportOtherIncome,
             value: '₹${summary.otherIncome.toStringAsFixed(0)}',
             valueColor: kGreen),
         const Divider(height: 28),
 
         // Expenses
         _PLSectionHeader(
-            label: 'Expenses', icon: Icons.trending_down, color: kAlertRed),
+            label: l10n.reportExpensesSection,
+            icon: Icons.trending_down,
+            color: kAlertRed),
         _PLRow(
-            label: 'Total Expenses',
+            label: l10n.reportTotalExpenses,
             value: '₹${summary.totalExpenses.toStringAsFixed(0)}',
             valueColor: kAlertRed),
         const Divider(height: 28),
 
         // Collections
         _PLSectionHeader(
-            label: 'Collections', icon: Icons.payments_outlined, color: kMittiBrown),
+            label: l10n.reportCashCollections,
+            icon: Icons.payments_outlined,
+            color: kMittiBrown),
         _PLRow(
-            label: 'Received from Customers',
+            label: l10n.reportReceivedFromCustomers,
             value: '₹${summary.totalCollected.toStringAsFixed(0)}'),
         _PLRow(
-            label: 'Active Customers',
+            label: l10n.reportActiveCustomers,
             value: '${summary.activeCustomerCount}'),
         const SizedBox(height: 8),
       ],
@@ -534,8 +603,7 @@ class _PLSkeleton extends StatelessWidget {
             Container(
               height: 88,
               decoration: BoxDecoration(
-                  color: kSurfaceGray,
-                  borderRadius: BorderRadius.circular(12)),
+                  color: kSurfaceGray, borderRadius: BorderRadius.circular(12)),
             ),
             const SizedBox(height: 24),
             _box(100, 14),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/customer_repository.dart';
 import '../../models/customer.dart';
 import '../../providers/customer_provider.dart';
@@ -11,7 +12,7 @@ import '../../theme/app_theme.dart';
 // RouteReorderScreen
 //
 // Shows active customers in their current route_order.
-// User drags rows to reorder. On [حفاظت کریں]:
+// User drags rows to reorder. On save:
 //   - Calls CustomerRepository.setRouteOrder(id, newIndex) for each customer.
 //   - Invalidates [activeCustomersProvider] so list + delivery session reflect
 //     the new order immediately.
@@ -36,6 +37,7 @@ class _RouteReorderScreenState extends ConsumerState<RouteReorderScreen> {
   List<Customer>? _customers;
   bool _saving = false;
   bool _dirty = false; // true once user has reordered at least once
+  bool _reorderTracked = false;
 
   @override
   void initState() {
@@ -52,6 +54,21 @@ class _RouteReorderScreenState extends ConsumerState<RouteReorderScreen> {
 
   void _onReorder(int oldIndex, int newIndex) {
     HapticFeedback.selectionClick();
+    if (!_reorderTracked) {
+      _reorderTracked = true;
+      AnalyticsService.instance.trackButtonClicked(
+        buttonName: 'reorder_route',
+        screenName: 'Route Reorder',
+        routeName: '/customers/reorder',
+        elementType: 'drag_handle',
+        elementText: 'Reorder Route',
+      );
+      AnalyticsService.instance.trackFeatureUsed(
+        featureName: 'route_reorder_used',
+        screenName: 'Route Reorder',
+        routeName: '/customers/reorder',
+      );
+    }
     setState(() {
       if (newIndex > oldIndex) newIndex--;
       final item = _customers!.removeAt(oldIndex);
@@ -66,6 +83,13 @@ class _RouteReorderScreenState extends ConsumerState<RouteReorderScreen> {
       return;
     }
 
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'save_route_reorder',
+      screenName: 'Route Reorder',
+      routeName: '/customers/reorder',
+      elementType: 'button',
+      elementText: 'Save',
+    );
     setState(() => _saving = true);
 
     try {
@@ -84,10 +108,7 @@ class _RouteReorderScreenState extends ConsumerState<RouteReorderScreen> {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'محفوظ نہیں ہوئی: ${e.toString()}',
-              textDirection: TextDirection.rtl,
-            ),
+            content: Text('Could not save: ${e.toString()}'),
             backgroundColor: kAlertRed,
             behavior: SnackBarBehavior.floating,
           ),
@@ -105,8 +126,7 @@ class _RouteReorderScreenState extends ConsumerState<RouteReorderScreen> {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          'ترتیب بدلیں',
-          textDirection: TextDirection.rtl,
+          'Reorder Route',
           style: TextStyle(
             color: kInkBlack,
             fontSize: 18,
@@ -128,12 +148,11 @@ class _RouteReorderScreenState extends ConsumerState<RouteReorderScreen> {
             TextButton(
               onPressed: _dirty ? _save : null,
               child: Text(
-                'محفوظ',
+                'Save',
                 style: TextStyle(
                   color: _dirty ? kGreen : kMutedGray,
                   fontWeight: FontWeight.w700,
                   fontSize: 15,
-                  fontFamily: 'NotoNastaliqUrdu',
                 ),
               ),
             )
@@ -164,12 +183,10 @@ class _RouteReorderScreenState extends ConsumerState<RouteReorderScreen> {
                           horizontal: 20, vertical: 10),
                       color: kSurfaceGray,
                       child: const Text(
-                        'پکڑ کر اوپر نیچے کریں — ترتیب تبدیل ہو گی',
-                        textDirection: TextDirection.rtl,
+                        'Drag rows up or down to change the route order',
                         style: TextStyle(
                           color: kMittiBrown,
                           fontSize: 13,
-                          fontFamily: 'NotoNastaliqUrdu',
                         ),
                       ),
                     ),
@@ -200,25 +217,24 @@ class _RouteReorderScreenState extends ConsumerState<RouteReorderScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: kCream,
         title: const Text(
-          'تبدیلی چھوڑیں؟',
-          textDirection: TextDirection.rtl,
+          'Discard changes?',
           style: TextStyle(color: kInkBlack, fontSize: 17),
         ),
         content: const Text(
-          'نئی ترتیب محفوظ نہیں ہو گی۔',
-          textDirection: TextDirection.rtl,
+          'The new order will not be saved.',
           style: TextStyle(color: kMutedGray, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('رہنے دیں', style: TextStyle(color: kMutedGray)),
+            child:
+                const Text('Keep Editing', style: TextStyle(color: kMutedGray)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('چھوڑیں',
-                style: TextStyle(
-                    color: kAlertRed, fontWeight: FontWeight.w600)),
+            child: const Text('Discard',
+                style:
+                    TextStyle(color: kAlertRed, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -259,7 +275,6 @@ class _ReorderRow extends StatelessWidget {
       height: kListRowHeight,
       color: kCream,
       child: Row(
-        textDirection: TextDirection.rtl,
         children: [
           // Route number badge
           SizedBox(
@@ -306,8 +321,7 @@ class _ReorderRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  '${customer.defaultLiters % 1 == 0 ? customer.defaultLiters.toInt() : customer.defaultLiters.toStringAsFixed(1)} لیٹر',
-                  textDirection: TextDirection.rtl,
+                  '${customer.defaultLiters % 1 == 0 ? customer.defaultLiters.toInt() : customer.defaultLiters.toStringAsFixed(1)} L',
                   style: kCaptionStyle,
                 ),
               ],
@@ -337,11 +351,9 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Center(
       child: Text(
-        'کوئی گاہک نہیں ہے',
-        textDirection: TextDirection.rtl,
+        'No customers found',
         style: TextStyle(color: kMutedGray, fontSize: 16),
       ),
     );
   }
 }
-

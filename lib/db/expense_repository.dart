@@ -67,11 +67,12 @@ class ExpenseRepository {
 
     final db      = await DatabaseProvider.database;
     final today   = date ?? DateTime.now().toIso8601String().substring(0, 10);
+    final roundedAmount = (amount * 100).round() / 100;
     final expense = Expense(
       expenseId: _uuid.v4(),
       date:      today,
       category:  category,
-      amount:    amount,
+      amount:    roundedAmount,
       note:      note,
       createdAt: DateTime.now().toIso8601String(),
     );

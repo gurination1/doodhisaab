@@ -7,7 +7,7 @@ part 'settings_provider.g.dart';
 
 // ── LANGUAGE ──────────────────────────────────────────────────────────────────
 
-/// Current app language code ('en' | 'pa' | 'hi' | 'ur').
+/// Current app language code ('en' | 'hi' | 'pa').
 ///
 /// Defaults to 'en' (set in SettingsRepository).
 /// Used to drive [MaterialApp.locale] — watch this in app.dart when implementing

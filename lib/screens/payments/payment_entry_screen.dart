@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/customer_repository.dart';
 import '../../db/payment_repository.dart';
 import '../../db/settings_repository.dart';
@@ -58,7 +59,7 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
   // ── Scroll ──────────────────────────────────────────────────────────────────
   final _avatarScroll = ScrollController();
 
-  final _paymentRepo  = PaymentRepository();
+  final _paymentRepo = PaymentRepository();
   final _customerRepo = CustomerRepository();
 
   @override
@@ -78,7 +79,7 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
 
   Future<void> _init() async {
     final customers = await _customerRepo.getActiveCustomers();
-    final deviceId  = await SettingsRepository.instance.getDeviceId();
+    final deviceId = await SettingsRepository.instance.getDeviceId();
     if (!mounted) return;
 
     // Determine which customer to pre-select
@@ -90,10 +91,10 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
     }
 
     setState(() {
-      _customers          = customers;
-      _deviceId           = deviceId;
+      _customers = customers;
+      _deviceId = deviceId;
       _selectedCustomerId = preselect ?? (customers.isNotEmpty ? null : null);
-      _loading            = false;
+      _loading = false;
     });
 
     // Scroll avatar strip to pre-selected customer
@@ -108,25 +109,40 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
   // ── Save ──────────────────────────────────────────────────────────────────────
 
   Future<void> _doSave() async {
+    if (_saving) return;
     final customer = _selectedCustomer;
     if (customer == null) return;
 
     final amount = double.tryParse(_numpadValue);
     if (amount == null || amount <= 0) return;
-
     setState(() => _saving = true);
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'save_payment',
+      screenName: 'Payment Entry',
+      routeName: '/payment/entry',
+      elementType: 'button',
+      elementText: 'Save Payment',
+    );
 
     final today = DateTime.now().toIso8601String().substring(0, 10);
 
     // 1. Persist payment row
     await _paymentRepo.insertPayment(
       customerId: customer.customerId,
-      date:       today,
-      amount:     amount,
-      deviceId:   _deviceId,
-      note:       _noteController.text.trim().isEmpty
-                    ? null
-                    : _noteController.text.trim(),
+      date: today,
+      amount: amount,
+      deviceId: _deviceId,
+      note: _noteController.text.trim().isEmpty
+          ? null
+          : _noteController.text.trim(),
+    );
+    await AnalyticsService.instance.trackFeatureUsed(
+      featureName: 'payment_collection',
+      screenName: 'Payment Entry',
+      routeName: '/payment/entry',
+      customerId: customer.customerId,
+      paymentType: 'cash',
+      amount: amount,
     );
 
     // 2. Decrement cached_balance — payments reduce what the customer owes
@@ -134,6 +150,8 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
 
     // 3. Refresh providers so home screen balance reflects the change
     ref.invalidate(todayDeliveriesProvider);
+    final now = DateTime.now();
+    ref.invalidate(monthlySummaryProvider(now.year, now.month));
 
     if (!mounted) return;
     setState(() => _saving = false);
@@ -142,8 +160,7 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '${customer.name} — ₹${amount.toStringAsFixed(2)} محفوظ',
-          textDirection: TextDirection.rtl,
+          '${customer.name} — ₹${amount.toStringAsFixed(2)} saved',
         ),
         backgroundColor: kGreen,
         duration: const Duration(seconds: 2),
@@ -182,8 +199,8 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
   void _scrollAvatarTo(int index) {
     if (!_avatarScroll.hasClients) return;
     const itemWidth = 60.0;
-    final target = (index * itemWidth)
-        .clamp(0.0, _avatarScroll.position.maxScrollExtent);
+    final target =
+        (index * itemWidth).clamp(0.0, _avatarScroll.position.maxScrollExtent);
     _avatarScroll.animateTo(
       target,
       duration: const Duration(milliseconds: 200),
@@ -208,8 +225,7 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          'ادائیگی درج کریں',
-          textDirection: TextDirection.rtl,
+          'Record Payment',
           style: TextStyle(
             color: kInkBlack,
             fontSize: 18,
@@ -234,10 +250,10 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
       children: [
         // ── Avatar strip — single-select ─────────────────────────────────────
         _AvatarStrip(
-          customers:          _customers,
-          selectedId:         _selectedCustomerId,
-          scrollController:   _avatarScroll,
-          onSelect:           _selectCustomer,
+          customers: _customers,
+          selectedId: _selectedCustomerId,
+          scrollController: _avatarScroll,
+          onSelect: _selectCustomer,
         ),
         const Divider(height: 1, color: kSurfaceGray),
 
@@ -263,8 +279,7 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
                       const Align(
                         alignment: Alignment.centerRight,
                         child: Text(
-                          'رقم (روپے)',
-                          textDirection: TextDirection.rtl,
+                          'Amount (Rs)',
                           style: kLabelStyle,
                         ),
                       ),
@@ -280,8 +295,8 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
                       // ── Overpayment warning ───────────────────────────────
                       if (_isOverpayment) ...[
                         _OverpaymentWarning(
-                          balance:  _selectedCustomer!.cachedBalance,
-                          amount:   _amount!,
+                          balance: _selectedCustomer!.cachedBalance,
+                          amount: _amount!,
                         ),
                         const SizedBox(height: 12),
                       ],
@@ -297,8 +312,7 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
                       const Align(
                         alignment: Alignment.centerRight,
                         child: Text(
-                          'نوٹ (اختیاری)',
-                          textDirection: TextDirection.rtl,
+                          'Note (Optional)',
                           style: kLabelStyle,
                         ),
                       ),
@@ -313,8 +327,7 @@ class _PaymentEntryState extends ConsumerState<PaymentEntryScreen> {
                         child: ElevatedButton(
                           onPressed: _canSave ? _doSave : null,
                           child: const Text(
-                            'محفوظ کریں',
-                            textDirection: TextDirection.rtl,
+                            'Save',
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -360,11 +373,10 @@ class _AvatarStrip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         itemCount: customers.length,
         itemBuilder: (ctx, i) {
-          final c          = customers[i];
+          final c = customers[i];
           final isSelected = c.customerId == selectedId;
-          final initial    = c.name.trim().isNotEmpty
-              ? c.name.trim()[0].toUpperCase()
-              : '?';
+          final initial =
+              c.name.trim().isNotEmpty ? c.name.trim()[0].toUpperCase() : '?';
 
           return Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -456,20 +468,17 @@ class _BalanceLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     if (balance > 0) {
       return Text(
-        'باقی: ₹${balance.toStringAsFixed(2)}',
-        textDirection: TextDirection.rtl,
+        'Due: ₹${balance.toStringAsFixed(2)}',
         style: kBodyStyle.copyWith(color: kAlertRed),
       );
     } else if (balance < 0) {
       return Text(
-        'اضافی: ₹${(-balance).toStringAsFixed(2)}',
-        textDirection: TextDirection.rtl,
+        'Advance: ₹${(-balance).toStringAsFixed(2)}',
         style: kBodyStyle.copyWith(color: kGreen),
       );
     }
     return Text(
-      'ادائیگی صاف',
-      textDirection: TextDirection.rtl,
+      'Settled',
       style: kBodyStyle.copyWith(color: kGreen),
     );
   }
@@ -489,8 +498,7 @@ class _SelectPrompt extends StatelessWidget {
       ),
       child: const Center(
         child: Text(
-          'اوپر سے گاہک منتخب کریں',
-          textDirection: TextDirection.rtl,
+          'Select a customer above',
           style: TextStyle(color: kMutedGray, fontSize: 16),
         ),
       ),
@@ -510,7 +518,7 @@ class _AmountDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final amount  = double.tryParse(numpadValue);
+    final amount = double.tryParse(numpadValue);
     final balance = customer?.cachedBalance;
     final hasValue = numpadValue.isNotEmpty && amount != null && amount > 0;
 
@@ -531,7 +539,7 @@ class _AmountDisplay extends StatelessWidget {
           // Left side: balance hint
           if (balance != null && balance > 0 && !hasValue)
             Text(
-              'باقی: ₹${balance.toStringAsFixed(0)}',
+              'Due: ₹${balance.toStringAsFixed(0)}',
               style: kBodyStyle.copyWith(color: kMutedGray),
             )
           else
@@ -539,7 +547,7 @@ class _AmountDisplay extends StatelessWidget {
 
           // Right side: entered amount (RTL — amount is on the right)
           Text(
-            numpadValue.isEmpty ? '0 روپے' : '₹$numpadValue',
+            numpadValue.isEmpty ? '₹0' : '₹$numpadValue',
             style: kTitleStyle.copyWith(
               color: numpadValue.isEmpty ? kMutedGray : kInkBlack,
             ),
@@ -576,8 +584,7 @@ class _OverpaymentWarning extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'رقم باقی سے ₹${extra.toStringAsFixed(2)} زیادہ ہے',
-              textDirection: TextDirection.rtl,
+              'Payment is ₹${extra.toStringAsFixed(2)} above the due balance',
               style: kBodyStyle.copyWith(color: kAmber),
             ),
           ),
@@ -590,7 +597,7 @@ class _OverpaymentWarning extends StatelessWidget {
 // ─── Note field ───────────────────────────────────────────────────────────────
 
 /// Plain text note field — system keyboard (not numpad).
-/// Single-line, RTL alignment. Optional.
+/// Single-line note field. Optional.
 class _NoteField extends StatelessWidget {
   final TextEditingController controller;
   const _NoteField({required this.controller});
@@ -600,17 +607,15 @@ class _NoteField extends StatelessWidget {
     return SizedBox(
       height: kInputHeight,
       child: TextField(
-        controller:  controller,
-        maxLines:    1,
-        textAlign:   TextAlign.right,
-        textDirection: TextDirection.rtl,
+        controller: controller,
+        maxLines: 1,
+        textAlign: TextAlign.left,
         style: const TextStyle(fontSize: 16, color: kInkBlack),
         decoration: InputDecoration(
-          hintText:       'مثال: عید ادائیگی',
-          hintStyle:      TextStyle(color: kMutedGray, fontSize: 16),
-          hintTextDirection: TextDirection.rtl,
-          filled:         true,
-          fillColor:      kWhite,
+          hintText: 'Example: Eid payment',
+          hintStyle: TextStyle(color: kMutedGray, fontSize: 16),
+          filled: true,
+          fillColor: kWhite,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
@@ -646,8 +651,7 @@ class _EmptyCustomersState extends StatelessWidget {
             const Icon(Icons.people_outline, size: 64, color: kMutedGray),
             const SizedBox(height: 16),
             const Text(
-              'کوئی گاہک نہیں',
-              textDirection: TextDirection.rtl,
+              'No Customers Yet',
               style: TextStyle(
                 fontSize: 20,
                 color: kMittiBrown,
@@ -656,8 +660,7 @@ class _EmptyCustomersState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'پہلے گاہک شامل کریں',
-              textDirection: TextDirection.rtl,
+              'Add a customer first',
               style: kBodyStyle,
             ),
             const SizedBox(height: 24),
@@ -666,8 +669,7 @@ class _EmptyCustomersState extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () => context.go('/customers/new'),
                 child: const Text(
-                  'گاہک شامل کریں',
-                  textDirection: TextDirection.rtl,
+                  'Add Customer',
                 ),
               ),
             ),

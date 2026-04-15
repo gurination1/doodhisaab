@@ -1,0 +1,8 @@
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/icon/doodhisaab_logo.png
+  min_sdk_android: 21
+  adaptive_icon_background: "#FBF8F1"
+  adaptive_icon_foreground: assets/icon/doodhisaab_logo.png
+  adaptive_icon_monochrome: assets/icon/doodhisaab_logo.png

@@ -4,13 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:path/path.dart' as p;
 
+import '../../core/services/analytics_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../../services/backup_service.dart';
 import '../../theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BackupScreen
 //
-// Shows a "بیک اپ لیں" button that calls BackupService.backupNow(), then lists
+// Shows a "Back Up Now" button that calls BackupService.backupNow(), then lists
 // the existing .db backups from Downloads/DoodHisaab/ in reverse-chron order.
 //
 // BackupService prunes to 7 backups automatically after each backup — the list
@@ -70,17 +72,27 @@ class _BackupScreenState extends State<BackupScreen> {
   // ── Manual backup ────────────────────────────────────────────────────────────
 
   Future<void> _runBackup() async {
+    final l10n = AppLocalizations.of(context)!;
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'backup_now',
+      screenName: 'Backup',
+      routeName: '/settings/backup',
+      elementType: 'button',
+      elementText: 'Backup Now',
+    );
     setState(() => _backing = true);
     try {
       final file = await BackupService.backupNow();
+      await AnalyticsService.instance.trackFeatureUsed(
+        featureName: 'backup_export',
+        screenName: 'Backup',
+        routeName: '/settings/backup',
+      );
       await _loadBackups();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'بیک اپ محفوظ: ${p.basename(file.path)}',
-              textDirection: TextDirection.rtl,
-            ),
+            content: Text(l10n.backupSavedAt(p.basename(file.path))),
             backgroundColor: kGreen,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
@@ -91,10 +103,7 @@ class _BackupScreenState extends State<BackupScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'بیک اپ ناکام ہوا',
-              textDirection: TextDirection.rtl,
-            ),
+            content: Text(l10n.backupFailed),
             backgroundColor: kAlertRed,
             behavior: SnackBarBehavior.floating,
           ),
@@ -111,7 +120,7 @@ class _BackupScreenState extends State<BackupScreen> {
   String _formatBackupDate(File file) {
     try {
       // basenameWithoutExtension → 'doodhisaab_20260403_1430'
-      final name  = p.basenameWithoutExtension(file.path);
+      final name = p.basenameWithoutExtension(file.path);
       final parts = name.split('_'); // ['doodhisaab', '20260403', '1430']
       if (parts.length >= 3) {
         final d = parts[1]; // '20260403'
@@ -132,7 +141,7 @@ class _BackupScreenState extends State<BackupScreen> {
   String _formatSize(File file) {
     try {
       final bytes = file.lengthSync();
-      if (bytes < 1024)        return '$bytes B';
+      if (bytes < 1024) return '$bytes B';
       if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     } catch (_) {
@@ -144,6 +153,8 @@ class _BackupScreenState extends State<BackupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+
     return Scaffold(
       backgroundColor: kCream,
       appBar: AppBar(
@@ -151,9 +162,8 @@ class _BackupScreenState extends State<BackupScreen> {
         elevation: 0,
         leading: const BackButton(color: kInkBlack),
         centerTitle: true,
-        title: const Text(
-          'بیک اپ',
-          textDirection: TextDirection.rtl,
+        title: Text(
+          l10n.settingsBackup,
           style: TextStyle(
             color: kInkBlack,
             fontSize: 18,
@@ -163,7 +173,6 @@ class _BackupScreenState extends State<BackupScreen> {
       ),
       body: Column(
         children: [
-
           // ── Backup now button ──────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
@@ -182,7 +191,6 @@ class _BackupScreenState extends State<BackupScreen> {
                 onPressed: _backing ? null : _runBackup,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  textDirection: TextDirection.rtl,
                   children: [
                     if (_backing)
                       const SizedBox(
@@ -197,8 +205,7 @@ class _BackupScreenState extends State<BackupScreen> {
                       const Icon(Icons.backup, size: 24, color: kWhite),
                     const SizedBox(width: 10),
                     Text(
-                      _backing ? 'محفوظ ہو رہا ہے...' : 'بیک اپ لیں',
-                      textDirection: TextDirection.rtl,
+                      _backing ? l10n.backupSaving : l10n.btnBackupNow,
                       style: kBodyStyle.copyWith(
                         color: _backing ? kMutedGray : kWhite,
                         fontWeight: FontWeight.w600,
@@ -217,20 +224,19 @@ class _BackupScreenState extends State<BackupScreen> {
             child: Align(
               alignment: Alignment.centerRight,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: kSurfaceGray,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  textDirection: TextDirection.rtl,
                   children: [
                     const Icon(Icons.schedule, size: 14, color: kMittiBrown),
                     const SizedBox(width: 5),
                     Text(
-                      'آٹو بیک اپ: روزانہ',
-                      textDirection: TextDirection.rtl,
+                      l10n.backupAutoDaily,
                       style: kLabelStyle.copyWith(color: kMittiBrown),
                     ),
                   ],
@@ -247,8 +253,7 @@ class _BackupScreenState extends State<BackupScreen> {
             child: Align(
               alignment: Alignment.centerRight,
               child: Text(
-                'محفوظ شدہ بیک اپ',
-                textDirection: TextDirection.rtl,
+                l10n.backupSavedBackups,
                 style: kLabelStyle.copyWith(
                   color: kMittiBrown,
                   fontWeight: FontWeight.w700,
@@ -267,8 +272,7 @@ class _BackupScreenState extends State<BackupScreen> {
                 : _backups.isEmpty
                     ? Center(
                         child: Text(
-                          'کوئی بیک اپ نہیں',
-                          textDirection: TextDirection.rtl,
+                          l10n.backupNoneYet,
                           style: kBodyStyle.copyWith(color: kMutedGray),
                         ),
                       )
@@ -278,12 +282,11 @@ class _BackupScreenState extends State<BackupScreen> {
                         // eliminates measurement overhead and keeps height stable.
                         itemExtent: kListRowHeight,
                         itemBuilder: (context, i) {
-                          final file     = _backups[i];
+                          final file = _backups[i];
                           final isLatest = i == 0;
                           return Container(
                             height: kListRowHeight,
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 20),
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
                             decoration: const BoxDecoration(
                               border: Border(
                                 bottom:
@@ -291,7 +294,6 @@ class _BackupScreenState extends State<BackupScreen> {
                               ),
                             ),
                             child: Row(
-                              textDirection: TextDirection.rtl,
                               children: [
                                 Icon(
                                   Icons.storage,
@@ -301,10 +303,8 @@ class _BackupScreenState extends State<BackupScreen> {
                                 const SizedBox(width: 14),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.end,
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
                                         _formatBackupDate(file),
@@ -331,12 +331,10 @@ class _BackupScreenState extends State<BackupScreen> {
                                         horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
                                       color: kGreen.withOpacity(0.12),
-                                      borderRadius:
-                                          BorderRadius.circular(10),
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Text(
-                                      'تازہ',
-                                      textDirection: TextDirection.rtl,
+                                      l10n.backupLatest,
                                       style: kLabelStyle.copyWith(
                                         color: kGreen,
                                         fontWeight: FontWeight.w600,

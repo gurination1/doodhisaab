@@ -33,7 +33,7 @@ Future<List<Delivery>> todayDeliveries(TodayDeliveriesRef ref) =>
 /// final statAsync = ref.watch(customerStatementProvider(customerId, year, month));
 /// return statAsync.when(
 ///   loading: () => const _Skeleton(),
-///   error:   (e, _) => Center(child: Text('خرابی: $e')),
+///   error:   (e, _) => Center(child: Text('Error: $e')),
 ///   data:    (statement) => _StatementView(statement),
 /// );
 /// ```

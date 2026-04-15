@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/customer_repository.dart';
 import '../../db/db_provider.dart';
 import '../../db/payment_repository.dart';
@@ -35,18 +36,17 @@ class CustomerProfileScreen extends ConsumerStatefulWidget {
       _CustomerProfileScreenState();
 }
 
-class _CustomerProfileScreenState
-    extends ConsumerState<CustomerProfileScreen> {
+class _CustomerProfileScreenState extends ConsumerState<CustomerProfileScreen> {
   final _customerRepo = CustomerRepository();
-  final _paymentRepo  = PaymentRepository();
+  final _paymentRepo = PaymentRepository();
 
-  bool      _loading   = true;
-  String?   _error;
-  bool      _archiving = false;
+  bool _loading = true;
+  String? _error;
+  bool _archiving = false;
 
-  Customer?      _customer;
+  Customer? _customer;
   List<Delivery> _recentDeliveries = [];
-  List<Payment>  _recentPayments   = [];
+  List<Payment> _recentPayments = [];
 
   @override
   void initState() {
@@ -57,27 +57,37 @@ class _CustomerProfileScreenState
   // ── Data loading ───────────────────────────────────────────────────────────
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final customer = await _customerRepo.getCustomerById(widget.customerId);
       if (customer == null) {
-        setState(() { _error = 'گاہک نہیں ملا'; _loading = false; });
+        setState(() {
+          _error = 'Customer not found';
+          _loading = false;
+        });
         return;
       }
       final deliveries = await _getRecentConfirmedDeliveries(widget.customerId);
-      final payments   = await _paymentRepo.getRecentPayments(
-        widget.customerId, limit: 10,
+      final payments = await _paymentRepo.getRecentPayments(
+        widget.customerId,
+        limit: 10,
       );
       if (!mounted) return;
       setState(() {
-        _customer         = customer;
+        _customer = customer;
         _recentDeliveries = deliveries;
-        _recentPayments   = payments;
-        _loading          = false;
+        _recentPayments = payments;
+        _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -87,13 +97,13 @@ class _CustomerProfileScreenState
   /// DeliveryRepository only exposes session-scoped write operations.
   Future<List<Delivery>> _getRecentConfirmedDeliveries(
       String customerId) async {
-    final db   = await DatabaseProvider.database;
+    final db = await DatabaseProvider.database;
     final rows = await db.query(
       'deliveries',
-      where:     "customer_id = ? AND status = 'confirmed'",
+      where: "customer_id = ? AND status = 'confirmed'",
       whereArgs: [customerId],
-      orderBy:   'date DESC',
-      limit:     10,
+      orderBy: 'date DESC',
+      limit: 10,
     );
     return rows.map(Delivery.fromMap).toList();
   }
@@ -101,25 +111,32 @@ class _CustomerProfileScreenState
   // ── Archive ────────────────────────────────────────────────────────────────
 
   Future<void> _confirmArchive() async {
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'archive_customer',
+      screenName: 'Customer Profile',
+      routeName: '/customers/${widget.customerId}',
+      elementType: 'icon_button',
+      elementText: 'Archive',
+    );
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('گاہک ہٹائیں؟'),
+        title: const Text('Archive customer?'),
         content: Text(
-          '${_customer!.name} کو آرکائیو کر دیا جائے گا۔\n'
-          'پرانا ریکارڈ محفوظ رہے گا۔',
-          style: kBodyLgUrduStyle,
+          '${_customer!.name} will be archived.\n'
+          'Previous records will remain available.',
+          style: kBodyStyle,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             style: TextButton.styleFrom(foregroundColor: kMutedGray),
-            child: const Text('منسوخ'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: kAlertRed),
-            child: const Text('ہٹائیں',
+            child: const Text('Archive',
                 style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
@@ -130,13 +147,19 @@ class _CustomerProfileScreenState
     setState(() => _archiving = true);
     try {
       await _customerRepo.archiveCustomer(widget.customerId);
+      await AnalyticsService.instance.trackFeatureUsed(
+        featureName: 'customer_management',
+        screenName: 'Customer Profile',
+        routeName: '/customers/${widget.customerId}',
+        customerId: widget.customerId,
+      );
       ref.invalidate(activeCustomersProvider);
       if (mounted) context.pop();
     } catch (e) {
       if (!mounted) return;
       setState(() => _archiving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خرابی: $e')),
+        SnackBar(content: Text('Error: $e')),
       );
     }
   }
@@ -149,8 +172,7 @@ class _CustomerProfileScreenState
     if (_loading) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(
-            child: CircularProgressIndicator(color: kGreen)),
+        body: const Center(child: CircularProgressIndicator(color: kGreen)),
       );
     }
 
@@ -170,7 +192,7 @@ class _CustomerProfileScreenState
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: _load,
-                  child: const Text('دوبارہ کوشش'),
+                  child: const Text('Retry'),
                 ),
               ],
             ),
@@ -188,8 +210,15 @@ class _CustomerProfileScreenState
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_note),
-            tooltip: 'ترمیم',
+            tooltip: 'Edit',
             onPressed: () async {
+              await AnalyticsService.instance.trackButtonClicked(
+                buttonName: 'edit_customer',
+                screenName: 'Customer Profile',
+                routeName: '/customers/${widget.customerId}',
+                elementType: 'icon_button',
+                elementText: 'Edit',
+              );
               await context.push('/customers/new', extra: c);
               _load(); // Reload after edit
             },
@@ -206,7 +235,7 @@ class _CustomerProfileScreenState
                 )
               : IconButton(
                   icon: const Icon(Icons.archive),
-                  tooltip: 'آرکائیو',
+                  tooltip: 'Archive',
                   onPressed: _confirmArchive,
                 ),
         ],
@@ -221,6 +250,13 @@ class _CustomerProfileScreenState
             _BalanceCard(
               customer: c,
               onPayment: () async {
+                await AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'record_payment',
+                  screenName: 'Customer Profile',
+                  routeName: '/customers/${widget.customerId}',
+                  elementType: 'button',
+                  elementText: 'Payment',
+                );
                 await context.push('/payment/entry', extra: c.customerId);
                 _load();
               },
@@ -233,21 +269,29 @@ class _CustomerProfileScreenState
 
             // ── Recent deliveries ────────────────────────────────────────
             _SectionHeader(
-              title: 'حالیہ ڈیری',
-              onViewAll: () =>
-                  context.push('/reports/statement/${c.customerId}'),
+              title: 'Recent Deliveries',
+              onViewAll: () {
+                AnalyticsService.instance.trackButtonClicked(
+                  buttonName: 'open_customer_statement',
+                  screenName: 'Customer Profile',
+                  routeName: '/customers/${widget.customerId}',
+                  elementType: 'button',
+                  elementText: 'Recent Deliveries',
+                );
+                context.push('/reports/statement/${c.customerId}');
+              },
             ),
             if (_recentDeliveries.isEmpty)
-              const _EmptySection(message: 'کوئی تصدیق شدہ ڈیری نہیں')
+              const _EmptySection(message: 'No confirmed deliveries')
             else
               ..._recentDeliveries.map((d) => _DeliveryTile(delivery: d)),
 
             const SizedBox(height: 4),
 
             // ── Recent payments ──────────────────────────────────────────
-            const _SectionHeader(title: 'حالیہ ادائیگیاں'),
+            const _SectionHeader(title: 'Recent Payments'),
             if (_recentPayments.isEmpty)
-              const _EmptySection(message: 'کوئی ادائیگی نہیں')
+              const _EmptySection(message: 'No payments yet')
             else
               ..._recentPayments.map((p) => _PaymentTile(payment: p)),
           ],
@@ -274,17 +318,17 @@ class _BalanceCard extends StatelessWidget {
     final String statusText;
 
     if (b > 0.01) {
-      bg         = kAlertRed;
+      bg = kAlertRed;
       amountText = '₨ ${_fmt(b)}';
-      statusText = 'واجب الادا';
+      statusText = 'Amount due';
     } else if (b < -0.01) {
-      bg         = kAmber;
+      bg = kAmber;
       amountText = '+ ₨ ${_fmt(b.abs())}';
-      statusText = 'ایڈوانس ادائیگی';
+      statusText = 'Advance payment';
     } else {
-      bg         = kGreen;
-      amountText = 'صاف';
-      statusText = 'کوئی بقایا نہیں';
+      bg = kGreen;
+      amountText = 'Clear';
+      statusText = 'No balance due';
     }
 
     return Container(
@@ -301,7 +345,7 @@ class _BalanceCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('بقایا رقم',
+                Text('Current Balance',
                     style:
                         kCaptionStyle.copyWith(color: kWhite.withOpacity(0.8))),
                 const SizedBox(height: 6),
@@ -314,7 +358,6 @@ class _BalanceCard extends StatelessWidget {
                   statusText,
                   style: kBodyStyle.copyWith(
                     color: kWhite.withOpacity(0.85),
-                    fontFamily: 'NotoNastaliqUrdu',
                   ),
                 ),
               ],
@@ -333,10 +376,9 @@ class _BalanceCard extends StatelessWidget {
                 textStyle: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
-                  fontFamily: 'NotoNastaliqUrdu',
                 ),
               ),
-              child: const Text('ادائیگی'),
+              child: const Text('Payment'),
             ),
         ],
       ),
@@ -345,9 +387,7 @@ class _BalanceCard extends StatelessWidget {
 
   String _fmt(double v) {
     final rounded = (v * 100).round() / 100;
-    return rounded % 1 == 0
-        ? '${rounded.toInt()}'
-        : rounded.toStringAsFixed(2);
+    return rounded % 1 == 0 ? '${rounded.toInt()}' : rounded.toStringAsFixed(2);
   }
 }
 
@@ -359,11 +399,11 @@ class _DetailsCard extends StatelessWidget {
 
   String _cycleLabel() {
     return switch (customer.paymentCycle) {
-      'Weekly'   => 'ہفتہ وار',
-      'BiWeekly' => 'دو ہفتہ وار',
-      'Monthly'  => 'ماہانہ',
-      'Custom'   => '${customer.paymentCycleDays ?? '?'} دن',
-      _          => customer.paymentCycle,
+      'Weekly' => 'Weekly',
+      'BiWeekly' => 'Bi-Weekly',
+      'Monthly' => 'Monthly',
+      'Custom' => '${customer.paymentCycleDays ?? '?'} days',
+      _ => customer.paymentCycle,
     };
   }
 
@@ -371,8 +411,8 @@ class _DetailsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = customer;
     final litersLabel = c.defaultLiters % 1 == 0
-        ? '${c.defaultLiters.toInt()} لیٹر'
-        : '${c.defaultLiters.toStringAsFixed(1)} لیٹر';
+        ? '${c.defaultLiters.toInt()} L'
+        : '${c.defaultLiters.toStringAsFixed(1)} L';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -383,20 +423,20 @@ class _DetailsCard extends StatelessWidget {
           children: [
             _DetailRow(
               icon: Icons.water_drop_outlined,
-              label: 'روزانہ دودھ',
+              label: 'Daily Milk',
               value: litersLabel,
             ),
             const Divider(height: 20),
             _DetailRow(
               icon: Icons.repeat,
-              label: 'ادائیگی سائیکل',
+              label: 'Payment Cycle',
               value: _cycleLabel(),
             ),
             if (c.phone != null) ...[
               const Divider(height: 20),
               _DetailRow(
                 icon: Icons.phone_outlined,
-                label: 'فون',
+                label: 'Phone',
                 value: c.phone!,
               ),
             ],
@@ -404,7 +444,7 @@ class _DetailsCard extends StatelessWidget {
               const Divider(height: 20),
               _DetailRow(
                 icon: Icons.location_on_outlined,
-                label: 'پتہ',
+                label: 'Address',
                 value: c.address!,
               ),
             ],
@@ -412,8 +452,8 @@ class _DetailsCard extends StatelessWidget {
               const Divider(height: 20),
               _DetailRow(
                 icon: Icons.price_change,
-                label: 'خصوصی قیمت',
-                value: '₨ ${c.priceOverride!.toStringAsFixed(2)} فی لیٹر',
+                label: 'Custom Price',
+                value: '₨ ${c.priceOverride!.toStringAsFixed(2)} per L',
                 valueColor: kAmber,
               ),
             ],
@@ -477,8 +517,7 @@ class _SectionHeader extends StatelessWidget {
             TextButton(
               onPressed: onViewAll,
               style: TextButton.styleFrom(foregroundColor: kGreen),
-              child: const Text('سب دیکھیں',
-                  style: TextStyle(fontFamily: 'NotoNastaliqUrdu')),
+              child: const Text('View All'),
             ),
         ],
       ),
@@ -496,12 +535,11 @@ class _DeliveryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final liters = delivery.liters;
     final litersText = liters % 1 == 0
-        ? '${liters.toInt()} لیٹر'
-        : '${liters.toStringAsFixed(1)} لیٹر';
+        ? '${liters.toInt()} L'
+        : '${liters.toStringAsFixed(1)} L';
     final total = delivery.totalValue;
-    final totalText = total % 1 == 0
-        ? '₨ ${total.toInt()}'
-        : '₨ ${total.toStringAsFixed(2)}';
+    final totalText =
+        total % 1 == 0 ? '₨ ${total.toInt()}' : '₨ ${total.toStringAsFixed(2)}';
 
     return ListTile(
       dense: true,
@@ -511,8 +549,7 @@ class _DeliveryTile extends StatelessWidget {
       subtitle: Text(delivery.date, style: kCaptionStyle),
       trailing: Text(
         totalText,
-        style: kBodyStyle.copyWith(
-            color: kGreen, fontWeight: FontWeight.w600),
+        style: kBodyStyle.copyWith(color: kGreen, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -525,15 +562,16 @@ class _PaymentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final amt = payment.amount;
-    final amtText = amt % 1 == 0 ? '₨ ${amt.toInt()}' : '₨ ${amt.toStringAsFixed(2)}';
+    final amtText =
+        amt % 1 == 0 ? '₨ ${amt.toInt()}' : '₨ ${amt.toStringAsFixed(2)}';
 
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       leading: const Icon(Icons.payments_outlined, color: kAmber, size: 20),
       title: Text(amtText,
-          style: kBodyStyle.copyWith(
-              color: kGreen, fontWeight: FontWeight.w600)),
+          style:
+              kBodyStyle.copyWith(color: kGreen, fontWeight: FontWeight.w600)),
       subtitle: Text(payment.date, style: kCaptionStyle),
       trailing: payment.note != null
           ? Text(payment.note!,

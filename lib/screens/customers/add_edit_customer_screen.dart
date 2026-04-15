@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/customer_repository.dart';
 import '../../models/customer.dart';
 import '../../providers/customer_provider.dart';
@@ -37,30 +38,29 @@ class AddEditCustomerScreen extends ConsumerStatefulWidget {
       _AddEditCustomerScreenState();
 }
 
-class _AddEditCustomerScreenState
-    extends ConsumerState<AddEditCustomerScreen> {
+class _AddEditCustomerScreenState extends ConsumerState<AddEditCustomerScreen> {
   final _repo = CustomerRepository();
 
   // ── Form controllers ───────────────────────────────────────────────────────
-  final _nameController    = TextEditingController();
-  final _phoneController   = TextEditingController();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
 
   // ── Liters input ───────────────────────────────────────────────────────────
-  double? _selectedLiters;   // chip selection
-  String  _litersInput = ''; // numpad raw string
+  double? _selectedLiters; // chip selection
+  String _litersInput = ''; // numpad raw string
 
   // ── Payment cycle ──────────────────────────────────────────────────────────
-  String _paymentCycle     = 'Monthly';
+  String _paymentCycle = 'Monthly';
   final _cycleDaysController = TextEditingController();
 
   // ── Price override ─────────────────────────────────────────────────────────
-  bool   _priceOverrideEnabled = false;
-  String _priceInput           = '';
+  bool _priceOverrideEnabled = false;
+  String _priceInput = '';
   final _priceReasonController = TextEditingController();
 
   // ── State ──────────────────────────────────────────────────────────────────
-  bool    _saving     = false;
+  bool _saving = false;
   String? _nameError;
 
   // ── Focus ──────────────────────────────────────────────────────────────────
@@ -78,15 +78,15 @@ class _AddEditCustomerScreenState
     if (c == null) {
       // Default: 2 liters / Monthly
       _selectedLiters = 2.0;
-      _litersInput    = '2';
+      _litersInput = '2';
       return;
     }
-    _nameController.text    = c.name;
-    _phoneController.text   = c.phone    ?? '';
-    _addressController.text = c.address  ?? '';
+    _nameController.text = c.name;
+    _phoneController.text = c.phone ?? '';
+    _addressController.text = c.address ?? '';
 
     _selectedLiters = c.defaultLiters;
-    _litersInput    = doubleToNumpadValue(c.defaultLiters);
+    _litersInput = doubleToNumpadValue(c.defaultLiters);
 
     _paymentCycle = c.paymentCycle;
     if (c.paymentCycleDays != null) {
@@ -95,7 +95,7 @@ class _AddEditCustomerScreenState
 
     if (c.priceOverride != null) {
       _priceOverrideEnabled = true;
-      _priceInput           = doubleToNumpadValue(c.priceOverride!);
+      _priceInput = doubleToNumpadValue(c.priceOverride!);
       _priceReasonController.text = c.priceOverrideReason ?? '';
     }
   }
@@ -115,7 +115,7 @@ class _AddEditCustomerScreenState
   bool _validate() {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      setState(() => _nameError = 'نام ضروری ہے');
+      setState(() => _nameError = 'Name is required');
       return false;
     }
     setState(() => _nameError = null);
@@ -125,32 +125,40 @@ class _AddEditCustomerScreenState
   // ── Save ───────────────────────────────────────────────────────────────────
 
   Future<void> _save() async {
+    if (_saving) return;
     if (!_validate()) return;
 
+    setState(() => _saving = true);
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: widget.isEdit ? 'edit_customer' : 'add_customer',
+      screenName: 'Add/Edit Customer',
+      routeName: '/customers/new',
+      elementType: 'button',
+      elementText: widget.isEdit ? 'Save Customer' : 'Add Customer',
+    );
+
     final liters = numpadValueToDouble(_litersInput) ?? _selectedLiters ?? 2.0;
-    final priceOverride = _priceOverrideEnabled
-        ? numpadValueToDouble(_priceInput)
-        : null;
+    final priceOverride =
+        _priceOverrideEnabled ? numpadValueToDouble(_priceInput) : null;
     int? cycleDays;
     if (_paymentCycle == 'Custom') {
       cycleDays = int.tryParse(_cycleDaysController.text.trim());
     }
 
-    setState(() => _saving = true);
     try {
       if (widget.isEdit) {
         final updated = widget.customer!.copyWith(
-          name:                _nameController.text.trim(),
-          phone:               _phoneController.text.trim().isEmpty
+          name: _nameController.text.trim(),
+          phone: _phoneController.text.trim().isEmpty
               ? null
               : _phoneController.text.trim(),
-          address:             _addressController.text.trim().isEmpty
+          address: _addressController.text.trim().isEmpty
               ? null
               : _addressController.text.trim(),
-          defaultLiters:       liters,
-          paymentCycle:        _paymentCycle,
-          paymentCycleDays:    cycleDays,
-          priceOverride:       priceOverride,
+          defaultLiters: liters,
+          paymentCycle: _paymentCycle,
+          paymentCycleDays: cycleDays,
+          priceOverride: priceOverride,
           priceOverrideReason: _priceOverrideEnabled &&
                   _priceReasonController.text.trim().isNotEmpty
               ? _priceReasonController.text.trim()
@@ -159,30 +167,42 @@ class _AddEditCustomerScreenState
         await _repo.updateCustomer(updated);
       } else {
         await _repo.addCustomer(
-          name:                _nameController.text.trim(),
-          phone:               _phoneController.text.trim().isEmpty
+          name: _nameController.text.trim(),
+          phone: _phoneController.text.trim().isEmpty
               ? null
               : _phoneController.text.trim(),
-          address:             _addressController.text.trim().isEmpty
+          address: _addressController.text.trim().isEmpty
               ? null
               : _addressController.text.trim(),
-          defaultLiters:       liters,
-          paymentCycle:        _paymentCycle,
-          paymentCycleDays:    cycleDays,
-          priceOverride:       priceOverride,
+          defaultLiters: liters,
+          paymentCycle: _paymentCycle,
+          paymentCycleDays: cycleDays,
+          priceOverride: priceOverride,
           priceOverrideReason: _priceOverrideEnabled &&
                   _priceReasonController.text.trim().isNotEmpty
               ? _priceReasonController.text.trim()
               : null,
         );
       }
+      await AnalyticsService.instance.trackFeatureUsed(
+        featureName: 'customer_management',
+        screenName: 'Add/Edit Customer',
+        routeName: '/customers/new',
+        customerId: widget.customer?.customerId,
+        liters: liters,
+      );
       ref.invalidate(activeCustomersProvider);
-      if (mounted) context.pop();
+      if (!mounted) return;
+      if (Navigator.of(context).canPop()) {
+        context.pop();
+      } else {
+        context.go('/customers');
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خرابی: $e')),
+        SnackBar(content: Text('Error: $e')),
       );
     }
   }
@@ -194,7 +214,7 @@ class _AddEditCustomerScreenState
     return Scaffold(
       backgroundColor: kCream,
       appBar: AppBar(
-        title: Text(widget.isEdit ? 'ترمیم کریں' : 'نیا گاہک'),
+        title: Text(widget.isEdit ? 'Edit Customer' : 'Add Customer'),
       ),
       body: _saving
           ? const Center(child: CircularProgressIndicator(color: kGreen))
@@ -206,14 +226,14 @@ class _AddEditCustomerScreenState
                         horizontal: 16, vertical: 12),
                     children: [
                       // ── Name (required) ──────────────────────────────────
-                      _FieldLabel(text: 'نام *'),
+                      _FieldLabel(text: 'Name *'),
                       const SizedBox(height: 6),
                       TextField(
                         controller: _nameController,
                         textCapitalization: TextCapitalization.words,
                         style: kBodyLgStyle,
                         decoration: InputDecoration(
-                          hintText: 'مثال: احمد علی',
+                          hintText: 'Example: Ahmed Ali',
                           errorText: _nameError,
                           prefixIcon: const Icon(Icons.person_outline),
                         ),
@@ -227,7 +247,7 @@ class _AddEditCustomerScreenState
                       const SizedBox(height: 16),
 
                       // ── Phone (optional) ────────────────────────────────
-                      _FieldLabel(text: 'فون نمبر (اختیاری)'),
+                      _FieldLabel(text: 'Phone Number (Optional)'),
                       const SizedBox(height: 6),
                       TextField(
                         controller: _phoneController,
@@ -242,14 +262,14 @@ class _AddEditCustomerScreenState
                       const SizedBox(height: 16),
 
                       // ── Address (optional) ──────────────────────────────
-                      _FieldLabel(text: 'پتہ (اختیاری)'),
+                      _FieldLabel(text: 'Address (Optional)'),
                       const SizedBox(height: 6),
                       TextField(
                         controller: _addressController,
                         style: kBodyLgStyle,
                         maxLines: 2,
                         decoration: const InputDecoration(
-                          hintText: 'گلی / محلہ',
+                          hintText: 'Street / Area',
                           prefixIcon: Icon(Icons.location_on_outlined),
                         ),
                       ),
@@ -257,13 +277,13 @@ class _AddEditCustomerScreenState
                       const SizedBox(height: 20),
 
                       // ── Default liters ───────────────────────────────────
-                      _FieldLabel(text: 'روزانہ دودھ (لیٹر)'),
+                      _FieldLabel(text: 'Daily Milk (Liters)'),
                       const SizedBox(height: 8),
 
                       // Display value
                       _NumpadDisplay(
                         value: _litersInput,
-                        suffix: 'لیٹر',
+                        suffix: 'L',
                         isActive: _activeNumpad == 'liters',
                         onTap: () => setState(() => _activeNumpad = 'liters'),
                       ),
@@ -276,8 +296,8 @@ class _AddEditCustomerScreenState
                         onSelected: (v) {
                           setState(() {
                             _selectedLiters = v;
-                            _litersInput    = doubleToNumpadValue(v);
-                            _activeNumpad   = 'liters';
+                            _litersInput = doubleToNumpadValue(v);
+                            _activeNumpad = 'liters';
                           });
                         },
                       ),
@@ -301,7 +321,7 @@ class _AddEditCustomerScreenState
                       const SizedBox(height: 20),
 
                       // ── Payment cycle ────────────────────────────────────
-                      _FieldLabel(text: 'ادائیگی سائیکل'),
+                      _FieldLabel(text: 'Payment Cycle'),
                       const SizedBox(height: 8),
                       _CycleSelector(
                         selected: _paymentCycle,
@@ -316,9 +336,9 @@ class _AddEditCustomerScreenState
                           keyboardType: TextInputType.number,
                           style: kBodyLgStyle,
                           decoration: const InputDecoration(
-                            hintText: 'دن درج کریں',
+                            hintText: 'Enter days',
                             prefixIcon: Icon(Icons.calendar_today),
-                            suffixText: 'دن',
+                            suffixText: 'days',
                           ),
                         ),
                       ],
@@ -329,7 +349,7 @@ class _AddEditCustomerScreenState
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _FieldLabel(text: 'خصوصی قیمت'),
+                          _FieldLabel(text: 'Custom Price'),
                           Switch(
                             value: _priceOverrideEnabled,
                             activeColor: kGreen,
@@ -341,31 +361,25 @@ class _AddEditCustomerScreenState
 
                       if (_priceOverrideEnabled) ...[
                         const SizedBox(height: 8),
-
                         _NumpadDisplay(
                           value: _priceInput,
                           prefix: '₨',
-                          suffix: 'فی لیٹر',
+                          suffix: 'per L',
                           isActive: _activeNumpad == 'price',
-                          onTap: () =>
-                              setState(() => _activeNumpad = 'price'),
+                          onTap: () => setState(() => _activeNumpad = 'price'),
                         ),
-
                         const SizedBox(height: 10),
-
                         if (_activeNumpad == 'price')
                           NumpadWidget(
                             value: _priceInput,
-                            onChanged: (v) =>
-                                setState(() => _priceInput = v),
+                            onChanged: (v) => setState(() => _priceInput = v),
                           ),
-
                         const SizedBox(height: 10),
                         TextField(
                           controller: _priceReasonController,
                           style: kBodyStyle,
                           decoration: const InputDecoration(
-                            hintText: 'وجہ (اختیاری)',
+                            hintText: 'Reason (Optional)',
                             prefixIcon: Icon(Icons.notes),
                           ),
                         ),
@@ -386,11 +400,10 @@ class _AddEditCustomerScreenState
                         minimumSize: const Size.fromHeight(kButtonHeight),
                       ),
                       child: Text(
-                        widget.isEdit ? 'تبدیلیاں محفوظ کریں' : 'گاہک شامل کریں',
+                        widget.isEdit ? 'Save Changes' : 'Add Customer',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
-                          fontFamily: 'NotoNastaliqUrdu',
                         ),
                       ),
                     ),
@@ -412,7 +425,7 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: kLabelStyle.copyWith(fontFamily: 'NotoNastaliqUrdu', height: 1.6),
+      style: kLabelStyle.copyWith(height: 1.3),
     );
   }
 }
@@ -453,8 +466,7 @@ class _NumpadDisplay extends StatelessWidget {
         child: Row(
           children: [
             if (prefix != null) ...[
-              Text(prefix!,
-                  style: kBodyLgStyle.copyWith(color: kMutedGray)),
+              Text(prefix!, style: kBodyLgStyle.copyWith(color: kMutedGray)),
               const SizedBox(width: 6),
             ],
             Text(
@@ -469,7 +481,6 @@ class _NumpadDisplay extends StatelessWidget {
               Text(suffix!,
                   style: kBodyLgStyle.copyWith(
                     color: kMutedGray,
-                    fontFamily: 'NotoNastaliqUrdu',
                   )),
             ],
           ],
@@ -490,10 +501,10 @@ class _CycleSelector extends StatelessWidget {
   });
 
   static const _options = [
-    ('Monthly',   'ماہانہ'),
-    ('Weekly',    'ہفتہ وار'),
-    ('BiWeekly',  'دو ہفتہ'),
-    ('Custom',    'اپنی مرضی'),
+    ('Monthly', 'Monthly'),
+    ('Weekly', 'Weekly'),
+    ('BiWeekly', 'Bi-Weekly'),
+    ('Custom', 'Custom'),
   ];
 
   @override
@@ -507,8 +518,7 @@ class _CycleSelector extends StatelessWidget {
         return GestureDetector(
           onTap: () => onChanged(value),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: isSelected ? kGreen : kSurfaceGray,
               borderRadius: BorderRadius.circular(8),
@@ -520,9 +530,7 @@ class _CycleSelector extends StatelessWidget {
               label,
               style: kBodyStyle.copyWith(
                 color: isSelected ? kWhite : kInkBlack,
-                fontWeight:
-                    isSelected ? FontWeight.w600 : FontWeight.normal,
-                fontFamily: 'NotoNastaliqUrdu',
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
           ),

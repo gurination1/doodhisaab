@@ -6,10 +6,6 @@ import 'db_provider.dart';
 
 /// Statement and summary queries.
 ///
-/// ⚠️  STUB — implementations are placeholders.
-///     Full implementation: Step 10 / Step 16 (Reports).
-///     Do not remove or rename methods — providers depend on these exact signatures.
-///
 /// Architecture: ALL methods must be called on the MAIN ISOLATE via FutureBuilder.
 /// sqflite's MethodChannel is bound to the main isolate.
 /// Never pass these calls to Isolate.run() — it will throw at runtime.
@@ -24,7 +20,6 @@ class StatementRepository {
     int year,
     int month,
   ) async {
-    // TODO(Step 16): full implementation
     final db = await DatabaseProvider.database;
 
     final monthStr = month.toString().padLeft(2, '0');
@@ -68,7 +63,6 @@ class StatementRepository {
   /// Returns all deliveries for today, confirmed or draft.
   /// Used by home screen to show session progress.
   Future<List<Delivery>> getTodayDeliveries() async {
-    // TODO(Step 12): expand with session_id filtering
     final db    = await DatabaseProvider.database;
     final today = DateTime.now().toIso8601String().substring(0, 10);
     final rows  = await db.query(
@@ -85,7 +79,6 @@ class StatementRepository {
   /// Returns the P&L summary for a given month.
   /// Aggregates milk revenue, other income, expenses, and payments.
   Future<MonthlySummary> getMonthlySummary(int year, int month) async {
-    // TODO(Step 16): full implementation
     final db        = await DatabaseProvider.database;
     final monthStr  = month.toString().padLeft(2, '0');
     final prefix    = '$year-$monthStr';

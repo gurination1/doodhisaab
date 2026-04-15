@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/analytics_service.dart';
 import '../../db/other_income_repository.dart';
 import '../../models/other_income.dart';
+import '../../providers/delivery_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/numpad.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Urdu category labels — keyed to OtherIncome.validCategories strings
-// ─────────────────────────────────────────────────────────────────────────────
-
-const Map<String, String> _categoryUrdu = {
-  'Calf Sale':    'بچھڑے کی فروخت',
-  'Ghee Sale':    'گھی کی فروخت',
-  'Manure Sale':  'کھاد کی فروخت',
-  'Other':        'دیگر',
+const Map<String, String> _categoryLabels = {
+  'Calf Sale': 'Calf Sale',
+  'Ghee Sale': 'Ghee Sale',
+  'Manure Sale': 'Manure Sale',
+  'Other': 'Other',
 };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -30,14 +30,16 @@ const Map<String, String> _categoryUrdu = {
 ///  - Write-on-save: one INSERT, no draft state.
 ///  - CSV export (Step 20) reads from other_income table. This screen is the
 ///    only way data gets into that table in MVP.
-class OtherIncomeEntryScreen extends StatefulWidget {
+class OtherIncomeEntryScreen extends ConsumerStatefulWidget {
   const OtherIncomeEntryScreen({super.key});
 
   @override
-  State<OtherIncomeEntryScreen> createState() => _OtherIncomeEntryScreenState();
+  ConsumerState<OtherIncomeEntryScreen> createState() =>
+      _OtherIncomeEntryScreenState();
 }
 
-class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
+class _OtherIncomeEntryScreenState
+    extends ConsumerState<OtherIncomeEntryScreen> {
   // ── Repo ───────────────────────────────────────────────────────────────────
   final _incomeRepo = OtherIncomeRepository();
 
@@ -60,17 +62,21 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
   double? get _amount => double.tryParse(_numpadValue);
 
   bool get _canSave =>
-      !_saving &&
-      _selectedCategory != null &&
-      _amount != null &&
-      _amount! > 0;
+      !_saving && _selectedCategory != null && _amount != null && _amount! > 0;
 
   // ── Save ────────────────────────────────────────────────────────────────────
 
   Future<void> _doSave() async {
     if (!_canSave) return;
-    HapticFeedback.selectionClick();
     setState(() => _saving = true);
+    await AnalyticsService.instance.trackButtonClicked(
+      buttonName: 'save_other_income',
+      screenName: 'Other Income Entry',
+      routeName: '/income/new',
+      elementType: 'button',
+      elementText: 'Save Other Income',
+    );
+    HapticFeedback.selectionClick();
 
     final note = _noteController.text.trim().isEmpty
         ? null
@@ -78,20 +84,26 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
 
     await _incomeRepo.addOtherIncome(
       category: _selectedCategory!,
-      amount:   _amount!,
-      note:     note,
+      amount: _amount!,
+      note: note,
     );
+    await AnalyticsService.instance.trackFeatureUsed(
+      featureName: 'other_income_entry',
+      screenName: 'Other Income Entry',
+      routeName: '/income/new',
+      amount: _amount,
+    );
+
+    final now = DateTime.now();
+    ref.invalidate(monthlySummaryProvider(now.year, now.month));
 
     if (!mounted) return;
     setState(() => _saving = false);
 
-    final label = _categoryUrdu[_selectedCategory] ?? _selectedCategory!;
+    final label = _categoryLabels[_selectedCategory] ?? _selectedCategory!;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          '$label — ₹${_amount!.toStringAsFixed(2)} محفوظ',
-          textDirection: TextDirection.rtl,
-        ),
+        content: Text('$label — ₹${_amount!.toStringAsFixed(2)} saved'),
         backgroundColor: kGreen,
         duration: const Duration(seconds: 2),
       ),
@@ -111,8 +123,7 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          'دیگر آمدنی درج کریں',
-          textDirection: TextDirection.rtl,
+          'Record Other Income',
           style: TextStyle(
             color: kInkBlack,
             fontSize: 18,
@@ -135,15 +146,15 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10,
+                      horizontal: 14,
+                      vertical: 10,
                     ),
                     decoration: BoxDecoration(
                       color: kSurfaceGray,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
-                      'دودھ کے علاوہ کی آمدنی یہاں درج کریں',
-                      textDirection: TextDirection.rtl,
+                      'Record non-milk income here',
                       style: TextStyle(
                         fontSize: 14,
                         color: kMittiBrown,
@@ -156,8 +167,7 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
                   const Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'قسم منتخب کریں',
-                      textDirection: TextDirection.rtl,
+                      'Choose Category',
                       style: kLabelStyle,
                     ),
                   ),
@@ -166,9 +176,9 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
                   // ── Category chip row — NOT a dropdown ──────────────────────
                   _CategoryChips(
                     categories: OtherIncome.validCategories,
-                    urduLabels: _categoryUrdu,
-                    selected:   _selectedCategory,
-                    onSelect:   (cat) => setState(() => _selectedCategory = cat),
+                    labels: _categoryLabels,
+                    selected: _selectedCategory,
+                    onSelect: (cat) => setState(() => _selectedCategory = cat),
                   ),
                   const SizedBox(height: 24),
 
@@ -176,8 +186,7 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
                   const Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'رقم (روپے)',
-                      textDirection: TextDirection.rtl,
+                      'Amount (Rs)',
                       style: kLabelStyle,
                     ),
                   ),
@@ -189,7 +198,7 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
 
                   // ── Custom numpad — no system keyboard ──────────────────────
                   NumpadWidget(
-                    value:     _numpadValue,
+                    value: _numpadValue,
                     onChanged: (v) => setState(() => _numpadValue = v),
                   ),
                   const SizedBox(height: 20),
@@ -198,15 +207,14 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
                   const Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'نوٹ (اختیاری)',
-                      textDirection: TextDirection.rtl,
+                      'Note (Optional)',
                       style: kLabelStyle,
                     ),
                   ),
                   const SizedBox(height: 8),
                   _NoteField(
                     controller: _noteController,
-                    hint: 'مثال: منگل کے بازار میں بچھڑا فروخت',
+                    hint: 'Example: calf sold in Tuesday market',
                   ),
                   const SizedBox(height: 24),
 
@@ -224,8 +232,7 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
                         ),
                       ),
                       child: Text(
-                        'محفوظ کریں',
-                        textDirection: TextDirection.rtl,
+                        'Save',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -248,13 +255,13 @@ class _OtherIncomeEntryScreenState extends State<OtherIncomeEntryScreen> {
 /// For low-literacy users, visible = discoverable.
 class _CategoryChips extends StatelessWidget {
   final List<String> categories;
-  final Map<String, String> urduLabels;
+  final Map<String, String> labels;
   final String? selected;
   final ValueChanged<String> onSelect;
 
   const _CategoryChips({
     required this.categories,
-    required this.urduLabels,
+    required this.labels,
     required this.selected,
     required this.onSelect,
   });
@@ -267,7 +274,7 @@ class _CategoryChips extends StatelessWidget {
       alignment: WrapAlignment.end,
       children: categories.map((cat) {
         final isSelected = cat == selected;
-        final label = urduLabels[cat] ?? cat;
+        final label = labels[cat] ?? cat;
 
         return Material(
           color: Colors.transparent,
@@ -293,8 +300,7 @@ class _CategoryChips extends StatelessWidget {
                 textDirection: TextDirection.rtl,
                 style: TextStyle(
                   fontSize: 15,
-                  fontWeight:
-                      isSelected ? FontWeight.w600 : FontWeight.w400,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                   color: isSelected ? kWhite : kInkBlack,
                 ),
               ),
@@ -332,8 +338,7 @@ class _AmountDisplay extends StatelessWidget {
       child: Align(
         alignment: Alignment.centerRight,
         child: Text(
-          numpadValue.isEmpty ? '0 روپے' : '₹$numpadValue',
-          textDirection: TextDirection.rtl,
+          numpadValue.isEmpty ? '₹0' : '₹$numpadValue',
           style: kTitleStyle.copyWith(
             color: numpadValue.isEmpty ? kMutedGray : kInkBlack,
           ),
@@ -355,18 +360,18 @@ class _NoteField extends StatelessWidget {
     return SizedBox(
       height: kInputHeight,
       child: TextField(
-        controller:    controller,
-        maxLines:      1,
-        textAlign:     TextAlign.right,
+        controller: controller,
+        maxLines: 1,
+        textAlign: TextAlign.right,
         textDirection: TextDirection.rtl,
         style: const TextStyle(fontSize: 16, color: kInkBlack),
         decoration: InputDecoration(
-          hintText:          hint,
-          hintStyle:         const TextStyle(color: kMutedGray, fontSize: 16),
+          hintText: hint,
+          hintStyle: const TextStyle(color: kMutedGray, fontSize: 16),
           hintTextDirection: TextDirection.rtl,
-          filled:            true,
-          fillColor:         kWhite,
-          contentPadding:    const EdgeInsets.symmetric(horizontal: 16),
+          filled: true,
+          fillColor: kWhite,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: kMutedGray),
